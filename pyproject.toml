@@ -1,0 +1,38 @@
+[project]
+name = "medical-conditions-api"
+version = "0.1.0"
+description = "Backend FastAPI con embeddings y LangChain (CPU-only)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # --- Núcleo FastAPI ---
+    "fastapi==0.116.2",
+    "uvicorn==0.32.0",
+    "pydantic==2.11.9",
+    "pydantic-settings==2.10.1",
+
+    # --- Tipado y validación ---
+    "annotated-types==0.7.0",
+    "typing-inspection==0.4.2",
+    "typing-extensions==4.15.0",
+
+    # --- ML / Embeddings (CPU-only) ---
+    "fastembed==0.7.3",
+
+    # --- LangChain (core + Google GenAI) ---
+    "langchain==0.3.27",
+    "langchain-core==0.3.76",
+    "langchain-google-genai==2.0.4",
+
+    # --- Base de datos ---
+    "SQLAlchemy==2.0.43",
+    "psycopg2-binary==2.9.9",
+    "pgvector==0.2.5",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app"]
