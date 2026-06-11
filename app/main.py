@@ -2,12 +2,14 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.core.database import Base, engine
 from app.core import models  # noqa: F401 - ensures models are registered before create_all
 from app.core.embedding import encode_to_embedding, generate_relevance_scores
+from app.core.exceptions import ChatHistoryError, RetrievalError
 from app.routes import chat, insights
 
 logging.basicConfig(
@@ -37,6 +39,18 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+
+
+# Map service-layer failures to HTTP responses once, so route handlers can stay
+# focused on the happy path. (The /chat/stream SSE endpoint handles errors inline
+# instead, since you can't raise HTTPException mid-stream.)
+@app.exception_handler(RetrievalError)
+@app.exception_handler(ChatHistoryError)
+@app.exception_handler(RuntimeError)
+async def _internal_error_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled %s on %s", type(exc).__name__, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": str(exc)})
+
 
 @app.get("/health")
 async def health_check():

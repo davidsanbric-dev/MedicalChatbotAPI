@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, TIMESTAMP, UUID, ForeignKey, Index, DDL, event
+from sqlalchemy import Column, String, Text, TIMESTAMP, UUID, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -70,22 +70,7 @@ class ChatHistory(Base):
     def __repr__(self):
         return f"<ChatHistory(session_id={self.session_id}, updated_at={self.updated_at})>"
 
-# DDL for PostgreSQL-specific features.
-# Note: the `vector` extension itself is created in the app lifespan (app/main.py)
+# Note: the `vector` extension is created in the app lifespan (app/main.py)
 # *before* create_all, because the documents.embedding column type depends on it.
-ddl_search_function = DDL("""
-CREATE OR REPLACE FUNCTION search_similar_documents(query_embedding vector(384), top_k integer)
-RETURNS TABLE(id uuid, content text, metadata_ jsonb, similarity_score float)
-LANGUAGE sql STABLE
-AS $$
-    SELECT
-        d.id,
-        d.content,
-        d.metadata_,
-        1 - (d.embedding <-> query_embedding) AS similarity_score
-    FROM documents d
-    ORDER BY d.embedding <-> query_embedding
-    LIMIT top_k;
-$$;
-""")
-event.listen(Base.metadata, 'after_create', ddl_search_function.execute_if(dialect='postgresql'))
+# Similarity search is done with pgvector's cosine_distance operator via the ORM
+# (see app/repositories/rps_document.py), so no custom SQL function is needed.

@@ -46,6 +46,31 @@ class ChatService:
     def __init__(self):
         self.document_service = DocumentService()
 
+    async def _rephrase_query(self, conversation_history, query: str) -> str:
+        """Rewrite `query` as a standalone search query, informed by chat history.
+
+        The knowledge base is in English, so the rephraser also normalizes the
+        query to English (see query_rephraser_prompt_template).
+        """
+        chain = query_rephraser_prompt_template | llm
+        response = chain.invoke({
+            "conversation_history": conversation_history.messages,
+            "input": query,
+        })
+
+        # The model sometimes wraps the rephrased query in surrounding quotes,
+        # which would otherwise pollute the embedding query text.
+        rephrased = response.content.strip().strip('"\'').strip()
+
+        logger.info(
+            "Rephrased query [model=%s]: '%s' -> '%s'",
+            model_name_of(response),
+            query,
+            rephrased,
+        )
+
+        return rephrased
+
     async def _stream_answer(self, chain_with_history, inputs, config):
         """Token-stream an answer from the chain.
 
@@ -100,7 +125,7 @@ class ChatService:
         conversation_history = chat_message_history(payload.session_id)
 
         yield {"stage": "rephrasing"}
-        rephrased_query = await conversation_history.rephrase_query_with_conversation(payload.query)
+        rephrased_query = await self._rephrase_query(conversation_history, payload.query)
 
         yield {"stage": "retrieving"}
         retrieved_documents = self.document_service.get_similar_documents(

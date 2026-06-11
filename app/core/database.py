@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -20,10 +22,19 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # Create declarative base
 Base = declarative_base()
 
-def get_db():
-    """Dependency to get database session"""
+
+@contextmanager
+def session_scope():
+    """Provide a transactional scope around a series of operations.
+
+    Commits on success, rolls back on error, and always closes the session.
+    """
     db = SessionLocal()
     try:
-        yield db # Use yield to allow for cleanup in order to work with FastAPI dependencies
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()

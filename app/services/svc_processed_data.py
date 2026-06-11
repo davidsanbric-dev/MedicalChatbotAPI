@@ -2,12 +2,9 @@ from collections import Counter
 from typing import List, Optional, Tuple
 
 from app.core.models import ProcessedData
-from app.core.database import SessionLocal
+from app.core.database import session_scope
 
 class ProcessedDataService:
-    def __init__(self):
-        pass
-
     def get_all_condition_names(self, processor_version: Optional[str] = None) -> List[str]:
         """
         Retrieve distinct condition names from the processed data stored in the database.
@@ -22,20 +19,16 @@ class ProcessedDataService:
         Raises:
             RuntimeError: If the query fails.
         """
-        db = SessionLocal()
         try:
-            query = db.query(ProcessedData.condition_name)
+            with session_scope() as db:
+                query = db.query(ProcessedData.condition_name)
 
-            if processor_version:
-                query = query.filter(ProcessedData.processor_version == processor_version)
+                if processor_version:
+                    query = query.filter(ProcessedData.processor_version == processor_version)
 
-            condition_names = [name for (name,) in query.distinct().order_by(ProcessedData.condition_name.asc()).all()]
-
-            return condition_names
+                return [name for (name,) in query.distinct().order_by(ProcessedData.condition_name.asc()).all()]
         except Exception as exc:
             raise RuntimeError(f"Failed to fetch condition names: {exc}") from exc
-        finally:
-            db.close()
 
     def get_top_symptoms_across_conditions(
         self,
@@ -55,14 +48,14 @@ class ProcessedDataService:
         Raises:
             RuntimeError: If database access fails.
         """
-        db = SessionLocal()
         try:
-            query = db.query(ProcessedData.condition_name, ProcessedData.content)
+            with session_scope() as db:
+                query = db.query(ProcessedData.condition_name, ProcessedData.content)
 
-            if processor_version:
-                query = query.filter(ProcessedData.processor_version == processor_version)
+                if processor_version:
+                    query = query.filter(ProcessedData.processor_version == processor_version)
 
-            records = query.all()
+                records = query.all()
 
             symptom_counts: Counter[str] = Counter()
 
@@ -92,5 +85,3 @@ class ProcessedDataService:
             return symptom_counts.most_common(top_n)
         except Exception as exc:
             raise RuntimeError(f"Failed to compute top symptoms: {exc}") from exc
-        finally:
-            db.close()
