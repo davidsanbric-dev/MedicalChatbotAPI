@@ -1,9 +1,12 @@
+import logging
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.messages import BaseMessage, messages_from_dict, messages_to_dict
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from typing import List
 from app.core.llm import llm
 from app.repositories.rps_chat import ChatHistoryRepository
+
+logger = logging.getLogger(__name__)
 
 class PostgreSQLChatMessageHistory(BaseChatMessageHistory):
     def __init__(self, session_id: str):
@@ -65,7 +68,7 @@ class PostgreSQLChatMessageHistory(BaseChatMessageHistory):
             "input": query
         })
 
-        print(f"Original query: '{query}' -> Rewritten query: '{response.content}'")
+        logger.info("Rephrased query: '%s' -> '%s'", query, response.content)
 
         return response.content
 

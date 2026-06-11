@@ -70,10 +70,9 @@ class ChatHistory(Base):
     def __repr__(self):
         return f"<ChatHistory(session_id={self.session_id}, updated_at={self.updated_at})>"
 
-# DDL for PostgreSQL-specific features
-ddl_vector_extension = DDL("CREATE EXTENSION IF NOT EXISTS vector;")
-event.listen(Base.metadata, 'after_create', ddl_vector_extension.execute_if(dialect='postgresql'))
-
+# DDL for PostgreSQL-specific features.
+# Note: the `vector` extension itself is created in the app lifespan (app/main.py)
+# *before* create_all, because the documents.embedding column type depends on it.
 ddl_search_function = DDL("""
 CREATE OR REPLACE FUNCTION search_similar_documents(query_embedding vector(384), top_k integer)
 RETURNS TABLE(id uuid, content text, metadata_ jsonb, similarity_score float)

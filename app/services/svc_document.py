@@ -1,7 +1,12 @@
+import logging
+
 from app.core.embedding import encode_to_embedding, generate_relevance_scores
 from app.schemas import RetrievalRequest
 from app.core.exceptions import RetrievalError
 from app.repositories.rps_document import DocumentRepository
+
+logger = logging.getLogger(__name__)
+
 
 class DocumentService:
     def __init__(self):
@@ -13,13 +18,14 @@ class DocumentService:
 
             results = self.document_repo.find_similar_to_query(query_embedding)
 
-            print(f"--- Retrieved {len(results)} Chunks from Database ---")
-            print("--- Retrieved Chunks Content ---")
+            logger.info("Retrieved %d chunks from database", len(results))
             for i, chunk in enumerate(results):
-                print(f"--- Chunk {i + 1} ---")
-                print(f"Vector Similarity Score: {chunk.get('similarity_score', 'N/A'):.4f}")
-                print(chunk['content'])
-                print("\n")
+                logger.debug(
+                    "Chunk %d (similarity=%.4f): %s",
+                    i + 1,
+                    chunk.get('similarity_score', float('nan')),
+                    chunk['content'],
+                )
 
             return {"results": results}
 
@@ -58,13 +64,19 @@ class DocumentService:
         # Take top N from relevant chunks
         top_documents = relevant_chunks[:top_n]
 
-        print("--- Re-ranked Documents ---")
-        print(f"Total re-ranked: {len(reranked_chunks)}, Relevant (score > {RELEVANCE_THRESHOLD}): {len(relevant_chunks)}, Selected: {len(top_documents)}")
+        logger.info(
+            "Re-ranked %d chunks; %d relevant (score > %s), %d selected",
+            len(reranked_chunks),
+            len(relevant_chunks),
+            RELEVANCE_THRESHOLD,
+            len(top_documents),
+        )
         for chunk in top_documents:
-            print("--- Chunk ---")
-            print(f"Cross-Encoder Score: {chunk['relevance_score']:.4f}")
-            print(chunk['content'])
-            print("\n")
+            logger.debug(
+                "Selected chunk (cross-encoder=%.4f): %s",
+                chunk['relevance_score'],
+                chunk['content'],
+            )
 
         return top_documents
     

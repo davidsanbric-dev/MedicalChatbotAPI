@@ -1,14 +1,9 @@
-import os
-from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
 
-load_dotenv()
-
-# Database URL configuration
-DATABASE_URL = os.getenv("DATABASE_URL")
+from app.core.config import DATABASE_URL
 
 # Create engine with connection pooling
 engine = create_engine(

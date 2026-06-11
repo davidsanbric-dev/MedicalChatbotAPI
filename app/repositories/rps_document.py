@@ -1,6 +1,11 @@
+import logging
+
 from sqlalchemy import text
 
-from app.db.database import SessionLocal
+from app.core.database import SessionLocal
+
+logger = logging.getLogger(__name__)
+
 
 class DocumentRepository:
     def __init__(self):
@@ -13,9 +18,10 @@ class DocumentRepository:
             # Convert the embedding list to the proper vector format
             embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
             
-            print(f"[DB Query] Requesting top_k={top_k} documents from database")
+            logger.debug("Requesting top_k=%d documents from database", top_k)
             
-            # Use the PostgreSQL function we created in init-db.sql
+            # Use the search_similar_documents() function created via the DDL
+            # event listener in app/core/models.py.
             sql_query = text("""
                 SELECT id, content, metadata_, similarity_score
                 FROM search_similar_documents(:query_embedding, :top_k)
@@ -36,7 +42,7 @@ class DocumentRepository:
                 for row in result.fetchall()
             ]
             
-            print(f"[DB Query] Retrieved {len(results)} documents from database")
+            logger.debug("Retrieved %d documents from database", len(results))
             
             return results
         finally:

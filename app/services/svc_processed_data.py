@@ -1,8 +1,8 @@
 from collections import Counter
 from typing import List, Optional, Tuple
 
-from app.db.models import ProcessedData
-from app.db.database import SessionLocal
+from app.core.models import ProcessedData
+from app.core.database import SessionLocal
 
 class ProcessedDataService:
     def __init__(self):

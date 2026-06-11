@@ -1,11 +1,18 @@
+import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from app.db.database import Base, engine
-from app.db import models  # noqa: F401 - ensures models are registered before create_all
+from app.core.database import Base, engine
+from app.core import models  # noqa: F401 - ensures models are registered before create_all
 from app.routes import chat, insights
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+)
 
 
 @asynccontextmanager
