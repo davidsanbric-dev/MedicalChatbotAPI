@@ -27,3 +27,14 @@ if OPENROUTER_API_KEY:
 else:
     # No OpenRouter key configured: fall back to Gemini as the sole provider.
     llm = gemini_llm
+
+
+def model_name_of(message) -> str:
+    """Best-effort extraction of the model that actually produced a response.
+
+    OpenRouter may route a request to a different underlying model than the one
+    requested, and the Gemini fallback may answer instead, so we read the model
+    reported in the response metadata rather than assuming OPENROUTER_MODEL.
+    """
+    metadata = getattr(message, "response_metadata", None) or {}
+    return metadata.get("model_name") or metadata.get("model") or "unknown"

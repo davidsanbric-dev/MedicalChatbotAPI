@@ -5,7 +5,7 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from app.schemas import RetrievalRequest
 from app.services.svc_document import DocumentService
 from app.core.memory import chat_message_history
-from app.core.llm import llm
+from app.core.llm import llm, model_name_of
 from app.core.prompts import query_rephraser_prompt_template, system_prompt_template
 
 logger = logging.getLogger(__name__)
@@ -46,9 +46,48 @@ class ChatService:
     def __init__(self):
         self.document_service = DocumentService()
 
-    async def get_conversational_response(self, payload: RetrievalRequest) -> str:
-        """Generate a conversational response based on input and context."""
+    async def _stream_answer(self, chain_with_history, inputs, config):
+        """Token-stream an answer from the chain.
 
+        Yields {"token": str} for each delta, then a final {"answer": str} with
+        the cleaned full text. Logs the model that actually produced the answer.
+        """
+        accumulated = ""
+        model = "unknown"
+        async for chunk in chain_with_history.astream(inputs, config=config):
+            found = model_name_of(chunk)
+            if found != "unknown":
+                model = found
+
+            delta = chunk.content
+            if isinstance(delta, list):
+                # Some providers return structured content parts; flatten to text.
+                delta = "".join(
+                    part.get("text", "") if isinstance(part, dict) else str(part)
+                    for part in delta
+                )
+            if delta:
+                accumulated += delta
+                yield {"token": delta}
+
+        logger.info("Answer generated [model=%s]", model)
+        # Clean the full text (handles rare JSON-wrapped responses) so the stored
+        # final message is correct even when streamed deltas were raw.
+        yield {"answer": _extract_text(accumulated)}
+
+    async def stream_conversational_response(self, payload: RetrievalRequest):
+        """Run the RAG pipeline, yielding progress events then the final answer.
+
+        Yields dicts the route serializes as SSE:
+        - {"stage": "rephrasing"}           understanding the question
+        - {"stage": "retrieving"}           searching the knowledge base
+        - {"stage": "found", "count": int}  number of passages selected as context
+        - {"token": str}                    a streamed delta of the answer
+        - {"answer": str}                   the final, cleaned assistant message
+
+        This is the single source of truth for the chat pipeline;
+        get_conversational_response() just drains it for the non-streaming route.
+        """
         conversational_chain = system_prompt_template | llm
 
         chain_with_history = RunnableWithMessageHistory(
@@ -57,41 +96,61 @@ class ChatService:
             input_messages_key="input",
             history_messages_key="conversation_history",
         )
-        
+
         conversation_history = chat_message_history(payload.session_id)
 
+        yield {"stage": "rephrasing"}
         rephrased_query = await conversation_history.rephrase_query_with_conversation(payload.query)
-        
+
+        yield {"stage": "retrieving"}
         retrieved_documents = self.document_service.get_similar_documents(
             RetrievalRequest(
                 query=rephrased_query,
                 session_id=payload.session_id,
             )
         )
-        
+
         top_documents = self.document_service.filter_top_documents(retrieved_documents, rephrased_query, top_n=5)
-        
-        # If no relevant chunks found, return a fallback message
+
+        config = {"configurable": {"session_id": payload.session_id}}
+
+        # If no relevant chunks found, fall back to a no-context answer.
         if not top_documents:
             logger.warning("No relevant documents found for the query")
-            config = {"configurable": {"session_id": payload.session_id}}
-            
-            fallback_response = await chain_with_history.ainvoke({
-                "input": payload.query,
-                "context": "No relevant information found in the knowledge base for this query.",
-            }, config=config)
+            yield {"stage": "found", "count": 0}
 
-            return _extract_text(fallback_response.content)
+            async for event in self._stream_answer(
+                chain_with_history,
+                {
+                    "input": payload.query,
+                    "context": "No relevant information found in the knowledge base for this query.",
+                },
+                config,
+            ):
+                yield event
+            return
+
+        yield {"stage": "found", "count": len(top_documents)}
 
         # Separate chunks so the model reads them as distinct passages rather
         # than one run-on blob.
         context_text = "\n\n".join(chunk['content'] for chunk in top_documents)
 
-        config = {"configurable": {"session_id": payload.session_id}}
-        
-        generated_response = await chain_with_history.ainvoke({
-            "input": payload.query,
-            "context": context_text,
-        }, config=config)
+        async for event in self._stream_answer(
+            chain_with_history,
+            {"input": payload.query, "context": context_text},
+            config,
+        ):
+            yield event
 
-        return _extract_text(generated_response.content)
+    async def get_conversational_response(self, payload: RetrievalRequest) -> str:
+        """Generate a conversational response based on input and context.
+
+        Non-streaming variant: drains the streaming pipeline and returns only
+        the final answer.
+        """
+        answer = ""
+        async for event in self.stream_conversational_response(payload):
+            if "answer" in event:
+                answer = event["answer"]
+        return answer

@@ -8,7 +8,7 @@ system_prompt_template = ChatPromptTemplate.from_messages([
 
     Respond clearly, concisely, and friendly. If the answer is not found in the context or history, kindly indicate that you do not have that information.
 
-    Always reply in the same language the user used in their last message, even though the document context is written in English. Translate the relevant information into the user's language naturally.
+    Respond in English by default. Only respond in another language if the user's most recent message is clearly written in that language, in which case translate the relevant information into that language naturally. Never switch to a language the user did not use. The document context is always in English; do not let it change your output language.
 
     Document context:
     ---

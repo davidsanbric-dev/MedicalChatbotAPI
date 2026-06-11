@@ -3,7 +3,7 @@ from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.messages import BaseMessage, messages_from_dict, messages_to_dict
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from typing import List
-from app.core.llm import llm
+from app.core.llm import llm, model_name_of
 from app.repositories.rps_chat import ChatHistoryRepository
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,12 @@ class PostgreSQLChatMessageHistory(BaseChatMessageHistory):
         # which would otherwise pollute the embedding query text.
         rephrased = response.content.strip().strip('"\'').strip()
 
-        logger.info("Rephrased query: '%s' -> '%s'", query, rephrased)
+        logger.info(
+            "Rephrased query [model=%s]: '%s' -> '%s'",
+            model_name_of(response),
+            query,
+            rephrased,
+        )
 
         return rephrased
 
