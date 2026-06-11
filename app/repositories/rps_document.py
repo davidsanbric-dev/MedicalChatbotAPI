@@ -11,7 +11,7 @@ class DocumentRepository:
     def __init__(self):
         pass
 
-    def find_similar_to_query(self, query_embedding, top_k=10):
+    def find_similar_to_query(self, query_embedding, top_k=20):
         """Search for similar documents using vector similarity"""
         db = SessionLocal()
         try:

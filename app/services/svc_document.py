@@ -71,11 +71,17 @@ class DocumentService:
             RELEVANCE_THRESHOLD,
             len(top_documents),
         )
-        for chunk in top_documents:
-            logger.debug(
-                "Selected chunk (cross-encoder=%.4f): %s",
+        # Logged at INFO so the selected context is visible by default; full
+        # content of every retrieved candidate stays at DEBUG (see above).
+        for i, chunk in enumerate(top_documents):
+            content = chunk['content']
+            preview = content if len(content) <= 200 else content[:200] + "…"
+            logger.info(
+                "Selected chunk %d/%d (cross-encoder=%.4f): %s",
+                i + 1,
+                len(top_documents),
                 chunk['relevance_score'],
-                chunk['content'],
+                preview,
             )
 
         return top_documents

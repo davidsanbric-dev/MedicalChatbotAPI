@@ -69,7 +69,7 @@ class ChatService:
             )
         )
         
-        top_documents = self.document_service.filter_top_documents(retrieved_documents, rephrased_query, top_n=3)
+        top_documents = self.document_service.filter_top_documents(retrieved_documents, rephrased_query, top_n=5)
         
         # If no relevant chunks found, return a fallback message
         if not top_documents:
@@ -83,7 +83,9 @@ class ChatService:
 
             return _extract_text(fallback_response.content)
 
-        context_text = "".join(chunk['content'] for chunk in top_documents)
+        # Separate chunks so the model reads them as distinct passages rather
+        # than one run-on blob.
+        context_text = "\n\n".join(chunk['content'] for chunk in top_documents)
 
         config = {"configurable": {"session_id": payload.session_id}}
         

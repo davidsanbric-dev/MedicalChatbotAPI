@@ -68,9 +68,13 @@ class PostgreSQLChatMessageHistory(BaseChatMessageHistory):
             "input": query
         })
 
-        logger.info("Rephrased query: '%s' -> '%s'", query, response.content)
+        # The model sometimes wraps the rephrased query in surrounding quotes,
+        # which would otherwise pollute the embedding query text.
+        rephrased = response.content.strip().strip('"\'').strip()
 
-        return response.content
+        logger.info("Rephrased query: '%s' -> '%s'", query, rephrased)
+
+        return rephrased
 
 # Callable to get chat history instance
 def chat_message_history(session_id: str) -> PostgreSQLChatMessageHistory:
