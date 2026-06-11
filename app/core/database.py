@@ -16,8 +16,11 @@ engine = create_engine(
     echo=False  # Set to True for SQL debugging
 )
 
-# Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Create session factory.
+# expire_on_commit=False so instances returned from session_scope() (which commits
+# on exit) keep their loaded attributes after the session closes — otherwise
+# accessing them raises DetachedInstanceError.
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
 
 # Create declarative base
 Base = declarative_base()

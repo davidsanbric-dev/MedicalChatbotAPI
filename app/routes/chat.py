@@ -1,11 +1,13 @@
 import json
+import logging
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from app.services.svc_chat import ChatService
 from app.schemas import RetrievalRequest
-from app.core.exceptions import RetrievalError
+
+logger = logging.getLogger(__name__)
 
 chat_service = ChatService()
 
@@ -27,10 +29,13 @@ async def reply_with_rag_and_memory_stream(payload: RetrievalRequest):
     by ChatService.stream_conversational_response (or {"error": ...} on failure).
     """
     async def event_generator():
+        # Errors must be surfaced as an SSE event: once streaming starts the HTTP
+        # status is already sent, so the app-level exception handlers can't run.
         try:
             async for event in chat_service.stream_conversational_response(payload):
                 yield f"data: {json.dumps(event)}\n\n"
-        except RetrievalError as e:
+        except Exception as e:
+            logger.exception("Chat stream failed for session %s", payload.session_id)
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     return StreamingResponse(
