@@ -1,5 +1,5 @@
-from app.db.database import SessionLocal
-from app.db.models import ChatHistory
+from app.core.database import SessionLocal
+from app.core.models import ChatHistory
 
 class ChatHistoryRepository:
     def __init__(self):
@@ -49,7 +49,7 @@ class ChatHistoryRepository:
         db = SessionLocal()
         try:
             db.query(ChatHistory).filter(
-                ChatHistory.session_id == self.session_id
+                ChatHistory.session_id == session_id
             ).delete()
             db.commit()
         finally:

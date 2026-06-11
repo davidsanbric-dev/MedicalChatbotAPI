@@ -44,12 +44,7 @@ class PostgreSQLChatMessageHistory(BaseChatMessageHistory):
     def clear(self) -> None:
         """Clear messages from PostgreSQL"""
         try:
-            history = self.repo.delete_by_session(self.session_id)
-
-            if not history:
-                return []
-
-            return messages_from_dict(history.history or [])
+            self.repo.delete_by_session(self.session_id)
         except Exception as e:
             raise Exception(f"Failed to delete the chat history: {str(e)}")
 
