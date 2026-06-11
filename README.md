@@ -1,6 +1,6 @@
 # Medical Conditions API
 
-A **FastAPI-based REST API** that powers a RAG (Retrieval-Augmented Generation) chatbot for medical conditions. This API provides intelligent, conversational responses about medical conditions using vector similarity search, cross-encoder re-ranking, and Google Gemini LLM integration.
+A **FastAPI-based REST API** that powers a RAG (Retrieval-Augmented Generation) chatbot for medical conditions. This API provides intelligent, conversational responses about medical conditions using vector similarity search, cross-encoder re-ranking, and LLM generation. The LLM layer uses **OpenRouter** as the default inference provider with **Google Gemini** as an automatic fallback.
 
 ## 🏗️ Architecture Overview
 
@@ -12,7 +12,7 @@ PostgreSQL Database (with pgvector)
 FastAPI Service (this component)
     ├─ Vector similarity search
     ├─ Cross-encoder re-ranking
-    ├─ Gemini LLM generation
+    ├─ LLM generation (OpenRouter → Gemini fallback)
     └─ Conversational memory
     ↓
 Streamlit Frontend
@@ -25,7 +25,7 @@ Streamlit Frontend
 - **Vector Similarity Search**: Retrieves relevant chunks using pgvector cosine similarity
 - **Cross-Encoder Re-Ranking**: Scores and re-ranks results with `ms-marco-MiniLM-L-6-v2`
 - **Relevance Filtering**: Filters chunks below relevance threshold (-2.0)
-- **LLM Generation**: Generates responses using Google Gemini 2.5 Flash
+- **LLM Generation**: Generates responses via OpenRouter (default), automatically falling back to Google Gemini 2.5 Flash if the OpenRouter request fails
 
 ### Conversational Memory
 - **Session Management**: PostgreSQL-backed chat history per session
@@ -47,7 +47,7 @@ Streamlit Frontend
 - Python 3.12+
 - Docker and Docker Compose (recommended)
 - PostgreSQL with pgvector extension
-- Google Gemini API key
+- An OpenRouter API key (default provider) and/or a Google Gemini API key (fallback)
 
 ### Environment Variables
 
@@ -55,8 +55,23 @@ Create a `.env` file (or set in docker-compose.yml):
 
 ```env
 DATABASE_URL=postgresql://postgres:password@postgres:5432/medical_conditions_db
+
+# Inference providers — OpenRouter is the default/primary provider; Gemini is
+# the automatic fallback used when an OpenRouter request fails. If
+# OPENROUTER_API_KEY is unset, Gemini is used as the sole provider.
+OPENROUTER_API_KEY=your_openrouter_api_key_here
 GEMINI_API_KEY=your_gemini_api_key_here
+
+# Optional overrides (defaults shown):
+# OPENROUTER_MODEL=openai/gpt-oss-120b:free
+# OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+# GEMINI_MODEL=gemini-2.5-flash
 ```
+
+> **Note:** The default `OPENROUTER_MODEL` (`openai/gpt-oss-120b:free`) works on a
+> free OpenRouter account. To use a paid model (e.g. `google/gemini-2.5-flash`
+> routed through OpenRouter), add credits at openrouter.ai/credits and set
+> `OPENROUTER_MODEL` accordingly.
 
 ### Docker Setup (Recommended)
 
@@ -224,10 +239,19 @@ RELEVANCE_THRESHOLD = -2.0  # Filter chunks below this score
 
 ### LLM Configuration
 
+The LLM is configured in [`app/core/llm.py`](app/core/llm.py). OpenRouter
+(OpenAI-compatible) is the primary provider; Gemini is wired in as a fallback via
+LangChain's `with_fallbacks`, so if an OpenRouter call fails (auth, rate limit,
+402, outage), the same request is transparently retried against Gemini. If
+`OPENROUTER_API_KEY` is unset, the API degrades cleanly to Gemini-only.
+
 ```python
-# Google Gemini configuration
-MODEL = "gemini-2.5-flash"
-TEMPERATURE = 0.7  # Creativity vs consistency
+# Primary provider (OpenRouter, OpenAI-compatible)
+OPENROUTER_MODEL = "openai/gpt-oss-120b:free"   # env: OPENROUTER_MODEL
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"  # env: OPENROUTER_BASE_URL
+
+# Fallback provider (Google Gemini)
+GEMINI_MODEL = "gemini-2.5-flash"               # env: GEMINI_MODEL
 ```
 
 ### Database Configuration
@@ -309,7 +333,7 @@ Filter by Threshold (> -2.0)
 ```
 Relevant Chunks + Conversation History + User Query
     ↓
-Gemini LLM (gemini-2.5-flash)
+OpenRouter LLM (default) ──fails──▶ Gemini LLM (fallback)
     ↓
 Conversational Response
 ```
@@ -329,16 +353,23 @@ docker compose logs postgres
 echo $DATABASE_URL
 ```
 
-#### Missing Gemini API Key
+#### Missing / Invalid Provider API Keys
 ```bash
 # Problem: LLM generation fails
-# Solution: Set GEMINI_API_KEY environment variable
-export GEMINI_API_KEY="your_api_key"
+# Solution: Set the provider keys. OpenRouter is primary, Gemini is the fallback.
+export OPENROUTER_API_KEY="your_openrouter_key"
+export GEMINI_API_KEY="your_gemini_key"
 
 # Or in docker-compose.yml
 environment:
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
   GEMINI_API_KEY: ${GEMINI_API_KEY}
 ```
+
+> If OpenRouter requests fail (e.g. a 402 "insufficient credits" on a paid model,
+> or a transient 429 rate limit), the API automatically falls back to Gemini —
+> so a valid `GEMINI_API_KEY` keeps the service working even when OpenRouter is
+> unavailable.
 
 #### No Documents Found
 ```bash
@@ -474,7 +505,8 @@ FastAPI provides automatic interactive documentation:
 
 ### LLM Integration
 - **langchain** (0.3.27): LLM orchestration
-- **langchain-google-genai** (2.0.4): Gemini integration
+- **langchain-openai** (0.3.35): OpenRouter (OpenAI-compatible) integration — primary provider
+- **langchain-google-genai** (2.0.4): Gemini integration — fallback provider
 - **langchain-huggingface** (0.3.1): HuggingFace embeddings
 
 ### Database
@@ -513,7 +545,7 @@ db.close()
 2. **Verify environment variables**: `docker compose config`
 3. **Check database connection**: Review API logs for connection errors
 4. **Test embeddings**: Ensure worker has generated embeddings
-5. **Verify Gemini API**: Check API key is valid and has quota
+5. **Verify provider APIs**: Check OpenRouter and Gemini keys are valid and have quota/credits
 
 ---
 

@@ -19,9 +19,10 @@ dependencies = [
     # --- ML / Embeddings (CPU-only) ---
     "fastembed==0.7.3",
 
-    # --- LangChain (core + Google GenAI) ---
+    # --- LangChain (core + OpenRouter/OpenAI + Google GenAI fallback) ---
     "langchain==0.3.27",
-    "langchain-core==0.3.76",
+    "langchain-core==0.3.86",
+    "langchain-openai==0.3.35",
     "langchain-google-genai==2.0.4",
 
     # --- Base de datos ---

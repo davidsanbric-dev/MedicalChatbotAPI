@@ -19,9 +19,10 @@ pydantic-settings==2.10.1
 # LangChain core (CPU-only)
 langchain==0.3.27
 # langchain-community==0.3.29
-langchain-core==0.3.76
+langchain-core==0.3.86
 # langchain-text-splitters==0.3.11
 # langchain-huggingface==0.3.1
+langchain-openai==0.3.35
 langchain-google-genai==2.0.4
 # Add langchain-core if required by langchain-google-genai
 
