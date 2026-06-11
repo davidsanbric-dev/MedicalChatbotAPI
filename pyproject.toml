@@ -14,7 +14,7 @@ dependencies = [
     "python-dotenv==1.1.1",
 
     # --- ML / Embeddings (CPU-only) ---
-    "fastembed==0.7.3",
+    "fastembed==0.8.0",
 
     # --- LangChain (core + OpenRouter/OpenAI + Google GenAI fallback) ---
     "langchain==0.3.27",
