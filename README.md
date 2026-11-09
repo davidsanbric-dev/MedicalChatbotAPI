@@ -187,11 +187,21 @@ client is the direct peer address. Behind reverse proxies that is the proxy, so
 every visitor would share one bucket. Set `TRUSTED_PROXY_HOPS` to the number of
 proxies in front of the API that append to `X-Forwarded-For`. The client is then
 read that many entries from the right, so entries a caller forges on the left
-are ignored. For the Dokploy deployment, where the API is reached by the frontend's
-nginx over the internal Docker network (browser → Traefik → nginx → API), that
-is `2`. This is only sound if the API can't be reached by a shorter path: if it
-also has a public domain, a caller can pad the header. The global daily cap
-bounds cost either way.
+are ignored.
+
+- **Frontend reaches the API over the internal Docker network** (browser →
+  Traefik → nginx → API, `API_UPSTREAM` is the internal service URL): set `2`.
+  This is only sound if the API can't also be reached by a shorter path. If it
+  also has a public domain, a caller can pad the header.
+- **Frontend reaches the API through its public URL** (the frontend image's
+  default `API_UPSTREAM`): the request passes Traefik a second time, and by
+  default Traefik replaces forwarded headers that come from untrusted sources,
+  nginx included. The API then can't see visitors at all, so leave
+  `TRUSTED_PROXY_HOPS=0` and either switch `API_UPSTREAM` to the internal URL or
+  set the two per-client limits to `0`. The frontend's nginx enforces its own
+  per-client limits either way.
+
+The global daily cap bounds cost in every setup.
 
 ### Dataset Insights
 
