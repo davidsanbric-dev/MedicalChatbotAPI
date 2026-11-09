@@ -53,7 +53,10 @@ class ChatService:
         query to English (see query_rephraser_prompt_template).
         """
         chain = query_rephraser_prompt_template | llm
-        response = chain.invoke({
+        # ainvoke, not invoke: a blocking call here would stall the event loop,
+        # and with it every other request and open stream, for the whole LLM
+        # round-trip.
+        response = await chain.ainvoke({
             "conversation_history": conversation_history.messages,
             "input": query,
         })
