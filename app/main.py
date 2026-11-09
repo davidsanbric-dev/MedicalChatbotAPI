@@ -20,6 +20,25 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def ensure_embedding_index():
+    """Bring documents_embedding_idx in line with the model definition.
+
+    create_all only builds indexes for tables it creates, so databases made
+    before the switch to HNSW still carry the old ivfflat index (built on an
+    empty table, with the default L2 opclass that the cosine search can't
+    use). Replace it once; afterwards this is a no-op.
+    """
+    index = next(i for i in models.Document.__table__.indexes if i.name == "documents_embedding_idx")
+    with engine.begin() as conn:
+        indexdef = conn.execute(
+            text("SELECT indexdef FROM pg_indexes WHERE indexname = :name"), {"name": index.name}
+        ).scalar()
+        if indexdef and ("USING hnsw" not in indexdef or "vector_cosine_ops" not in indexdef):
+            logger.info("Replacing outdated vector index: %s", indexdef)
+            conn.execute(text(f"DROP INDEX {index.name}"))
+        index.create(bind=conn, checkfirst=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     with engine.begin() as conn:
@@ -27,6 +46,7 @@ async def lifespan(app: FastAPI):
         # documents table column type depends on it.
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
     Base.metadata.create_all(bind=engine)
+    ensure_embedding_index()
 
     # Warm up the ONNX embedding and cross-encoder sessions so the first real
     # /chat/ request doesn't pay the one-time inference warmup (which otherwise

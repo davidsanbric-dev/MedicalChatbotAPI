@@ -399,7 +399,7 @@ app.add_middleware(
 ## 📈 Performance Considerations
 
 ### Response Times
-- **Vector Search**: ~50-100ms (pgvector IVFFlat index)
+- **Vector Search**: ~50-100ms. At the current size (hundreds of chunks) Postgres scans every row, which is exact and cheaper than any index. The `documents_embedding_idx` HNSW index (cosine) takes over automatically as the table grows, and it needs no rebuild after loading, unlike ivfflat. Startup replaces the ivfflat index that older databases carry.
 - **Cross-Encoder**: ~100-200ms (depends on chunk count)
 - **LLM Generation**: ~1-3s (Gemini API latency)
 - **Total**: ~1.5-3.5s per request

@@ -52,8 +52,18 @@ class Document(Base):
     # Relationship back to processed data
     processed_data = relationship("ProcessedData", back_populates="documents")
 
+    # HNSW, not ivfflat: ivfflat learns its clusters from the rows present at
+    # build time, so one created by create_all on an empty table is useless
+    # until rebuilt. HNSW needs no training data and stays correct as rows
+    # arrive. The opclass must match the cosine operator the API queries with.
+    # On older databases app/main.py swaps the previous ivfflat index for this one.
     __table_args__ = (
-        Index('documents_embedding_idx', 'embedding', postgresql_using='ivfflat', postgresql_ops={'vector_cosine_ops'}, postgresql_with={'lists': 100}),
+        Index(
+            'documents_embedding_idx',
+            'embedding',
+            postgresql_using='hnsw',
+            postgresql_ops={'embedding': 'vector_cosine_ops'},
+        ),
     )
 
     def __repr__(self):
