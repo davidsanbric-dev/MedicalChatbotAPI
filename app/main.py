@@ -45,6 +45,9 @@ async def lifespan(app: FastAPI):
         # The vector extension must exist before create_all, since the
         # documents table column type depends on it.
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+        # Leftover from an old schema: an L2-distance search function nothing
+        # calls (search uses the ORM's cosine_distance). No-op once dropped.
+        conn.execute(text("DROP FUNCTION IF EXISTS search_similar_documents(vector, integer);"))
     Base.metadata.create_all(bind=engine)
     ensure_embedding_index()
 
