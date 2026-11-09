@@ -29,7 +29,7 @@ COPY README.md ./
 COPY . .
 
 # 🚀 Instala dependencias del proyecto dentro del sistema (sin venv)
-RUN uv sync --frozen
+RUN uv sync --frozen --no-dev
 
 # 🌍 Puerto configurable de la app (override con la env API_PORT en Dokploy/compose)
 ENV API_PORT=8000
@@ -38,4 +38,4 @@ EXPOSE ${API_PORT}
 # 🧠 Ejecuta la app con uvicorn usando uv (más rápido y reproducible).
 # Forma shell + exec para que ${API_PORT} se expanda en runtime y uvicorn
 # reciba las señales (SIGTERM) directamente del init del contenedor.
-CMD ["sh", "-c", "exec uv run uvicorn app.main:app --host 0.0.0.0 --port ${API_PORT:-8000}"]
+CMD ["sh", "-c", "exec uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port ${API_PORT:-8000}"]

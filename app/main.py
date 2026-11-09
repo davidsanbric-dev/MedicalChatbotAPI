@@ -2,7 +2,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
@@ -10,6 +10,7 @@ from app.core.database import Base, engine
 from app.core import models  # noqa: F401 - ensures models are registered before create_all
 from app.core.embedding import encode_to_embedding, generate_relevance_scores
 from app.core.exceptions import ChatHistoryError, RetrievalError
+from app.core.rate_limit import limit_chat
 from app.routes import chat, insights
 
 logging.basicConfig(
@@ -80,5 +81,6 @@ async def health_check():
     """Health check endpoint for container orchestration"""
     return {"status": "healthy"}
 
-app.include_router(chat.router, prefix="/chat", tags=["Conversational Chat"])
+# Chat turns cost LLM calls, so only they are rate limited (see app/core/rate_limit.py).
+app.include_router(chat.router, prefix="/chat", tags=["Conversational Chat"], dependencies=[Depends(limit_chat)])
 app.include_router(insights.router, prefix="/insights", tags=["Dataset Insights"])

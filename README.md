@@ -66,6 +66,13 @@ GEMINI_API_KEY=your_gemini_api_key_here
 # OPENROUTER_MODEL=openai/gpt-oss-120b:free
 # OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 # GEMINI_MODEL=gemini-2.5-flash
+
+# Rate limiting on /chat/ and /chat/stream (defaults shown; 0 disables a limit).
+# See "Rate Limiting" below.
+# CHAT_RATE_LIMIT_PER_MINUTE=6
+# CHAT_RATE_LIMIT_PER_DAY=60
+# CHAT_GLOBAL_LIMIT_PER_DAY=500
+# TRUSTED_PROXY_HOPS=0
 ```
 
 > **Note:** The default `OPENROUTER_MODEL` (`openai/gpt-oss-120b:free`) works on a
@@ -157,6 +164,34 @@ Generate conversational responses using RAG pipeline with re-ranking.
 5. Filters by relevance threshold
 6. Generates response with Gemini LLM
 7. Saves conversation to history
+
+#### Rate Limiting
+
+Each chat turn costs two LLM calls (rephrase + answer), so `/chat/` and
+`/chat/stream` are rate limited. `/health` and `/insights/*` are not. There is
+no authentication yet.
+
+| Limit | Default | Env var |
+|---|---|---|
+| Per client, per minute | 6 | `CHAT_RATE_LIMIT_PER_MINUTE` |
+| Per client, per day | 60 | `CHAT_RATE_LIMIT_PER_DAY` |
+| All clients together, per day | 500 | `CHAT_GLOBAL_LIMIT_PER_DAY` |
+
+The windows slide, and a rejected request uses no quota. Over a limit, the API
+answers `429 Too Many Requests` with a `Retry-After` header (seconds) and a
+human-readable `detail`. Counters live in process memory: they reset on restart,
+and running several replicas would need a shared store such as Redis.
+
+**Identifying clients behind proxies.** By default (`TRUSTED_PROXY_HOPS=0`) a
+client is the direct peer address. Behind reverse proxies that is the proxy, so
+every visitor would share one bucket. Set `TRUSTED_PROXY_HOPS` to the number of
+proxies in front of the API that append to `X-Forwarded-For`. The client is then
+read that many entries from the right, so entries a caller forges on the left
+are ignored. For the Dokploy deployment, where the API is reached by the frontend's
+nginx over the internal Docker network (browser → Traefik → nginx → API), that
+is `2`. This is only sound if the API can't be reached by a shorter path: if it
+also has a public domain, a caller can pad the header. The global daily cap
+bounds cost either way.
 
 ### Dataset Insights
 

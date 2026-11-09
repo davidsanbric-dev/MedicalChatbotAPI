@@ -67,3 +67,6 @@ tests/
 scraped/
 tmp/
 temp/
+
+# Tests (dev only)
+tests
