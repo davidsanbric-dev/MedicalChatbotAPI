@@ -1,6 +1,8 @@
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+"""The two prompts behind each chat turn: rephrase the question, then answer it from the passages."""
 
-system_prompt_template = ChatPromptTemplate.from_messages([
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+ANSWER_PROMPT = ChatPromptTemplate.from_messages([
     ("system", '''You are an expert and helpful AI assistant. Your task is to answer the user's question based on two sources of information:
 
     1.  The relevant context extracted from a document provided to you.
@@ -18,7 +20,7 @@ system_prompt_template = ChatPromptTemplate.from_messages([
     ("human", "{input}")
 ])
 
-query_rephraser_prompt_template = ChatPromptTemplate.from_messages([
+REPHRASE_PROMPT = ChatPromptTemplate.from_messages([
     MessagesPlaceholder(variable_name="conversation_history"),
     ("user", "Given the previous conversation, generate a search query that is autonomous and can be understood without the history. The query must be about the last topic discussed. Always write the search query in English, translating it if the user wrote in another language, because the knowledge base is in English. Do not answer the question, just rephrase it."),
     ("user", "{input}")

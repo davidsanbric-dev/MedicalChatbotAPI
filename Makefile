@@ -1,4 +1,4 @@
-.PHONY: help install db-up db-down api docker-up docker-down
+.PHONY: help install test db-up db-down api docker-up docker-down
 
 # Load variables from .env (POSTGRES_*, API_PORT, GEMINI_API_KEY, ...)
 ifneq (,$(wildcard .env))
@@ -9,6 +9,7 @@ endif
 help:
 	@echo "Available targets:"
 	@echo "  install     Install Python dependencies with uv"
+	@echo "  test        Run the unit tests (no database or API keys needed)"
 	@echo "  db-up       Start the local Postgres (pgvector) container"
 	@echo "  db-down     Stop the local Postgres container"
 	@echo "  api         Run the API locally with uv + uvicorn (auto-reload)"
@@ -17,6 +18,9 @@ help:
 
 install:
 	uv sync
+
+test:
+	uv run pytest
 
 db-up:
 	docker compose up -d postgres

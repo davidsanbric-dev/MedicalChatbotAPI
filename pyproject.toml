@@ -1,28 +1,27 @@
 [project]
 name = "medical-conditions-api"
 version = "0.1.0"
-description = "Backend FastAPI con embeddings y LangChain (CPU-only)"
+description = "Station 4 of the medical chatbot pipeline: a FastAPI RAG service (fastembed on CPU, LangChain)"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    # --- Núcleo FastAPI ---
+    # --- Web service ---
     "fastapi==0.116.2",
     "uvicorn==0.32.0",
     "pydantic==2.11.9",
 
-    # --- Configuración / entorno ---
+    # --- Configuration ---
     "python-dotenv==1.1.1",
 
-    # --- ML / Embeddings (CPU-only) ---
+    # --- Embeddings and re-ranking (ONNX, CPU only) ---
     "fastembed==0.8.0",
 
-    # --- LangChain (core + OpenRouter/OpenAI + Google GenAI fallback) ---
-    "langchain==0.3.27",
+    # --- LLM: OpenRouter (OpenAI-compatible) with a Google Gemini fallback ---
     "langchain-core==0.3.86",
     "langchain-openai==0.3.35",
     "langchain-google-genai==2.0.4",
 
-    # --- Base de datos ---
+    # --- Database ---
     "SQLAlchemy==2.0.43",
     "psycopg2-binary==2.9.9",
     "pgvector==0.2.5",

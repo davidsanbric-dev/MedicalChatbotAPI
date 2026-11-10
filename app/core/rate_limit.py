@@ -4,6 +4,8 @@ Every chat turn costs two LLM calls, so the chat routes are limited per client
 (per minute and per day) and globally per day. State lives in this process,
 which matches how the API runs (a single uvicorn process); running several
 replicas would need a shared store such as Redis instead.
+
+The limits as visitors see them: https://medicalchatbot.demos.davieldev.com/api#notes
 """
 
 import logging

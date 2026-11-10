@@ -639,24 +639,6 @@ wheels = [
 ]
 
 [[package]]
-name = "langchain"
-version = "0.3.27"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "langchain-core" },
-    { name = "langchain-text-splitters" },
-    { name = "langsmith" },
-    { name = "pydantic" },
-    { name = "pyyaml" },
-    { name = "requests" },
-    { name = "sqlalchemy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/83/f6/f4f7f3a56626fe07e2bb330feb61254dbdf06c506e6b59a536a337da51cf/langchain-0.3.27.tar.gz", hash = "sha256:aa6f1e6274ff055d0fd36254176770f356ed0a8994297d1df47df341953cec62", size = 10233809, upload-time = "2025-07-24T14:42:32.959Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f6/d5/4861816a95b2f6993f1360cfb605aacb015506ee2090433a71de9cca8477/langchain-0.3.27-py3-none-any.whl", hash = "sha256:7b20c4f338826acb148d885b20a73a16e410ede9ee4f19bb02011852d5f98798", size = 1018194, upload-time = "2025-07-24T14:42:30.23Z" },
-]
-
-[[package]]
 name = "langchain-core"
 version = "0.3.86"
 source = { registry = "https://pypi.org/simple" }
@@ -704,18 +686,6 @@ wheels = [
 ]
 
 [[package]]
-name = "langchain-text-splitters"
-version = "0.3.11"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "langchain-core" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/11/43/dcda8fd25f0b19cb2835f2f6bb67f26ad58634f04ac2d8eae00526b0fa55/langchain_text_splitters-0.3.11.tar.gz", hash = "sha256:7a50a04ada9a133bbabb80731df7f6ddac51bc9f1b9cab7fa09304d71d38a6cc", size = 46458, upload-time = "2025-08-31T23:02:58.316Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/58/0d/41a51b40d24ff0384ec4f7ab8dd3dcea8353c05c973836b5e289f1465d4f/langchain_text_splitters-0.3.11-py3-none-any.whl", hash = "sha256:cf079131166a487f1372c8ab5d0bfaa6c0a4291733d9c43a34a16ac9bcd6a393", size = 33845, upload-time = "2025-08-31T23:02:57.195Z" },
-]
-
-[[package]]
 name = "langsmith"
 version = "0.4.34"
 source = { registry = "https://pypi.org/simple" }
@@ -753,7 +723,6 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "fastembed" },
-    { name = "langchain" },
     { name = "langchain-core" },
     { name = "langchain-google-genai" },
     { name = "langchain-openai" },
@@ -774,7 +743,6 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = "==0.116.2" },
     { name = "fastembed", specifier = "==0.8.0" },
-    { name = "langchain", specifier = "==0.3.27" },
     { name = "langchain-core", specifier = "==0.3.86" },
     { name = "langchain-google-genai", specifier = "==2.0.4" },
     { name = "langchain-openai", specifier = "==0.3.35" },

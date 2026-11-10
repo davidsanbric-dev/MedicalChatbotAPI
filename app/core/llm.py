@@ -1,3 +1,8 @@
+"""The chat model: OpenRouter first, Gemini as automatic fallback.
+
+See "Provider failover" in https://medicalchatbot.demos.davieldev.com/api#notes
+"""
+
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from app.core.config import (
