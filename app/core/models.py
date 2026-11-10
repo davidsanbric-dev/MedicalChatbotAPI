@@ -59,6 +59,7 @@ class Document(Base):
     # HNSW, not ivfflat: ivfflat learns its clusters from the rows present when it is
     # built, so one created on the empty table is useless until rebuilt, while HNSW
     # stays correct as rows arrive. The opclass matches the cosine search.
+    # https://medicalchatbot.demos.davieldev.com/database#notes
     __table_args__ = (
         Index(
             "documents_embedding_idx",
