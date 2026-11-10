@@ -12,6 +12,7 @@ from app.core.config import (
     OPENROUTER_API_KEY,
     OPENROUTER_BASE_URL,
     OPENROUTER_MODEL,
+    OPENROUTER_REASONING_EFFORT,
 )
 
 # Gemini acts as the fallback provider.
@@ -30,6 +31,7 @@ if OPENROUTER_API_KEY:
         api_key=OPENROUTER_API_KEY,
         base_url=OPENROUTER_BASE_URL,
         max_retries=0,
+        extra_body={"reasoning": {"effort": OPENROUTER_REASONING_EFFORT}},
     )
     llm = openrouter_llm.with_fallbacks([gemini_llm])
 else:

@@ -17,6 +17,9 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")
+# How long the model thinks before answering: none | minimal | low | medium | high.
+# "none" makes a chat turn ~3 s instead of 7-14 s; the passages already hold the answer.
+OPENROUTER_REASONING_EFFORT = os.getenv("OPENROUTER_REASONING_EFFORT", "none")
 
 # --- Rate limiting (chat endpoints; 0 disables a limit) ---
 # Per client, so one visitor can't use up the LLM quota...
