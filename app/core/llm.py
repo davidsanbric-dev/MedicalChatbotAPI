@@ -21,13 +21,15 @@ gemini_llm = ChatGoogleGenerativeAI(
 )
 
 # OpenRouter (OpenAI-compatible) is the default/primary provider when configured.
-# If a call to OpenRouter fails (auth, rate limit, outage, ...), LangChain
-# automatically retries the same request with Gemini via `with_fallbacks`.
+# If a call to OpenRouter fails (auth, rate limit, outage, removed model, ...),
+# LangChain sends the same request to Gemini via `with_fallbacks`. That fallback
+# is the retry: retrying a busy free model first only delays the answer.
 if OPENROUTER_API_KEY:
     openrouter_llm = ChatOpenAI(
         model=OPENROUTER_MODEL,
         api_key=OPENROUTER_API_KEY,
         base_url=OPENROUTER_BASE_URL,
+        max_retries=0,
     )
     llm = openrouter_llm.with_fallbacks([gemini_llm])
 else:

@@ -65,7 +65,7 @@ Both chat endpoints take `{"query": "...", "session_id": "..."}`. A query is 1 t
 | --- | --- | --- |
 | `DATABASE_URL` | none | Postgres with the pgvector extension available |
 | `OPENROUTER_API_KEY` | none | Primary LLM provider; without it, Gemini answers alone |
-| `OPENROUTER_MODEL` | `openai/gpt-oss-120b:free` | Must exist on [openrouter.ai/models](https://openrouter.ai/models); free variants come and go |
+| `OPENROUTER_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b:free` | Must exist on [openrouter.ai/models](https://openrouter.ai/models). Free (`:free`) variants come and go and share a daily request cap; whenever one fails, Gemini answers |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | none, `gemini-2.5-flash` | Fallback provider, used whenever an OpenRouter call fails |
 | `CHAT_RATE_LIMIT_PER_MINUTE`, `CHAT_RATE_LIMIT_PER_DAY` | `6`, `60` | Per-client chat limits (`0` disables) |
 | `CHAT_GLOBAL_LIMIT_PER_DAY` | `500` | Chat limit across all clients, which bounds LLM spend |
