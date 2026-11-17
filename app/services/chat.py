@@ -17,7 +17,7 @@ from typing import Any
 
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
-from app.core.llm import llm, model_name_of
+from app.core.llm import llm, model_name_of, text_of
 from app.core.memory import PostgresChatHistory
 from app.core.prompts import ANSWER_PROMPT, REPHRASE_PROMPT
 from app.schemas import ChatRequest
@@ -66,7 +66,7 @@ async def _rephrase(request: ChatRequest) -> str:
     history = await PostgresChatHistory(request.session_id).aget_messages()
     response = await _rephrase_chain.ainvoke({"conversation_history": history, "input": request.query})
     # Models sometimes wrap the query in quotes, which would pollute the embedding.
-    question = _text_of(response.content).strip().strip("\"'").strip()
+    question = text_of(response.content).strip().strip("\"'").strip()
     logger.info("Rephrased [model=%s]: %r -> %r", model_name_of(response), request.query, question)
     return question
 
@@ -78,18 +78,11 @@ async def _stream_answer(request: ChatRequest, context: str) -> AsyncIterator[di
     async for chunk in _answer_chain.astream({"input": request.query, "context": context}, config=config):
         if (name := model_name_of(chunk)) != "unknown":
             model = name
-        if token := _text_of(chunk.content):
+        if token := text_of(chunk.content):
             parts.append(token)
             yield {"token": token}
     logger.info("Answer generated [model=%s]", model)
     yield {"answer": unwrap_json_answer("".join(parts))}
-
-
-def _text_of(content: str | list) -> str:
-    """Message content as plain text; some providers send a list of content parts."""
-    if isinstance(content, str):
-        return content
-    return "".join(part.get("text", "") if isinstance(part, dict) else str(part) for part in content)
 
 
 def unwrap_json_answer(text: str) -> str:

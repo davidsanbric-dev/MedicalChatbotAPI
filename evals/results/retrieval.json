@@ -1,0 +1,603 @@
+{
+  "date": "2026-11-17",
+  "processor": "v6",
+  "documents": 565,
+  "k": 5,
+  "topN": 5,
+  "threshold": -3.0,
+  "onTopic": 76,
+  "offTopic": 16,
+  "stages": {
+    "vector": {
+      "precision": 0.6552631578947369,
+      "recall": 0.4580997949419002,
+      "hit_rate": 1.0,
+      "mrr": 0.9495614035087719,
+      "empty_on_topic": 0.0,
+      "abstained_off_topic": 0.0
+    },
+    "reranked": {
+      "precision": 0.6342105263157894,
+      "recall": 0.4358476684134579,
+      "hit_rate": 1.0,
+      "mrr": 0.9258771929824562,
+      "empty_on_topic": 0.0,
+      "abstained_off_topic": 0.0
+    },
+    "pipeline": {
+      "precision": 0.7111842105263158,
+      "recall": 0.36728041695146957,
+      "hit_rate": 0.9210526315789473,
+      "mrr": 0.875438596491228,
+      "empty_on_topic": 0.05263157894736842,
+      "abstained_off_topic": 0.9375
+    }
+  },
+  "sweep": [
+    {
+      "threshold": -6.0,
+      "hit_rate": 0.9868421052631579,
+      "precision": 0.6730263157894737,
+      "empty_on_topic": 0,
+      "abstained_off_topic": 0.875
+    },
+    {
+      "threshold": -5.0,
+      "hit_rate": 0.9868421052631579,
+      "precision": 0.7024122807017544,
+      "empty_on_topic": 0,
+      "abstained_off_topic": 0.875
+    },
+    {
+      "threshold": -4.0,
+      "hit_rate": 0.9342105263157895,
+      "precision": 0.694078947368421,
+      "empty_on_topic": 0.039473684210526314,
+      "abstained_off_topic": 0.9375
+    },
+    {
+      "threshold": -3.0,
+      "hit_rate": 0.9210526315789473,
+      "precision": 0.7111842105263158,
+      "empty_on_topic": 0.05263157894736842,
+      "abstained_off_topic": 0.9375
+    },
+    {
+      "threshold": -2.0,
+      "hit_rate": 0.8947368421052632,
+      "precision": 0.724561403508772,
+      "empty_on_topic": 0.07894736842105263,
+      "abstained_off_topic": 0.9375
+    },
+    {
+      "threshold": -1.0,
+      "hit_rate": 0.881578947368421,
+      "precision": 0.7719298245614035,
+      "empty_on_topic": 0.10526315789473684,
+      "abstained_off_topic": 0.9375
+    },
+    {
+      "threshold": 0.0,
+      "hit_rate": 0.8552631578947368,
+      "precision": 0.7739035087719298,
+      "empty_on_topic": 0.11842105263157894,
+      "abstained_off_topic": 1
+    }
+  ],
+  "misses": [
+    {
+      "question": "How long does a chest cold with a cough last?",
+      "expected": "Bronchitis",
+      "got": [
+        "(nothing above the threshold)"
+      ]
+    },
+    {
+      "question": "Why do my fingers go numb and tingle at night?",
+      "expected": "Carpal tunnel syndrome",
+      "got": [
+        "Panic attack"
+      ]
+    },
+    {
+      "question": "What causes an itchy red rash after touching a new soap?",
+      "expected": "Dermatitis",
+      "got": [
+        "(nothing above the threshold)"
+      ]
+    },
+    {
+      "question": "What are the early signs of high blood sugar?",
+      "expected": "Diabetes",
+      "got": [
+        "(nothing above the threshold)"
+      ]
+    },
+    {
+      "question": "What helps when I keep throwing up?",
+      "expected": "Nausea and vomiting",
+      "got": [
+        "(nothing above the threshold)"
+      ]
+    },
+    {
+      "question": "How long does the stomach flu last?",
+      "expected": "Stomach flu",
+      "got": [
+        "Diarrhea",
+        "Diarrhea"
+      ]
+    }
+  ],
+  "leaks": [
+    {
+      "question": "What are the symptoms of appendicitis?",
+      "got": [
+        "Bursitis",
+        "Cellulitis"
+      ]
+    }
+  ],
+  "outcomes": [
+    {
+      "question": "What helps with heartburn that keeps coming back after meals?",
+      "condition": "Acid reflux & GERD",
+      "outcome": "found"
+    },
+    {
+      "question": "How can I get rid of pimples on my face?",
+      "condition": "Acne",
+      "outcome": "found"
+    },
+    {
+      "question": "What are the signs of attention deficit disorder in adults?",
+      "condition": "ADHD/ADD",
+      "outcome": "found"
+    },
+    {
+      "question": "What can I take for seasonal allergies and a runny nose?",
+      "condition": "Allergy",
+      "outcome": "found"
+    },
+    {
+      "question": "What are the warning signs of anorexia?",
+      "condition": "Anorexia",
+      "outcome": "found"
+    },
+    {
+      "question": "How is anxiety treated?",
+      "condition": "Anxiety",
+      "outcome": "found"
+    },
+    {
+      "question": "What triggers asthma attacks?",
+      "condition": "Asthma",
+      "outcome": "found"
+    },
+    {
+      "question": "What can I do for lower back pain?",
+      "condition": "Back pain",
+      "outcome": "found"
+    },
+    {
+      "question": "What are the mood swings of bipolar disorder like?",
+      "condition": "Bipolar disorder",
+      "outcome": "found"
+    },
+    {
+      "question": "How long does a chest cold with a cough last?",
+      "condition": "Bronchitis",
+      "outcome": "none"
+    },
+    {
+      "question": "How should I treat an itchy insect bite?",
+      "condition": "Bug bites",
+      "outcome": "found"
+    },
+    {
+      "question": "What is bulimia and how is it treated?",
+      "condition": "Bulimia",
+      "outcome": "found"
+    },
+    {
+      "question": "Why does the joint in my shoulder hurt and swell with bursitis?",
+      "condition": "Bursitis",
+      "outcome": "found"
+    },
+    {
+      "question": "Why do my fingers go numb and tingle at night?",
+      "condition": "Carpal tunnel syndrome",
+      "outcome": "wrong"
+    },
+    {
+      "question": "What should I do after being bitten by a dog?",
+      "condition": "Cat and dog bites",
+      "outcome": "found"
+    },
+    {
+      "question": "My skin is red, warm and swollen and spreading. Could it be an infection?",
+      "condition": "Cellulitis",
+      "outcome": "found"
+    },
+    {
+      "question": "What are the symptoms of chlamydia?",
+      "condition": "Chlamydia",
+      "outcome": "found"
+    },
+    {
+      "question": "How do I treat a cold sore on my lip?",
+      "condition": "Cold sore",
+      "outcome": "found"
+    },
+    {
+      "question": "What are the symptoms after a hit to the head?",
+      "condition": "Concussion",
+      "outcome": "found"
+    },
+    {
+      "question": "What can cause sudden confusion in an older person?",
+      "condition": "Confusion",
+      "outcome": "found"
+    },
+    {
+      "question": "What are the symptoms of COVID-19?",
+      "condition": "Coronavirus and COVID-19",
+      "outcome": "found"
+    },
+    {
+      "question": "How do I know if I'm depressed?",
+      "condition": "Depression",
+      "outcome": "found"
+    },
+    {
+      "question": "What causes an itchy red rash after touching a new soap?",
+      "condition": "Dermatitis",
+      "outcome": "none"
+    },
+    {
+      "question": "What are the early signs of high blood sugar?",
+      "condition": "Diabetes",
+      "outcome": "none"
+    },
+    {
+      "question": "What should I do about watery diarrhea?",
+      "condition": "Diarrhea",
+      "outcome": "found"
+    },
+    {
+      "question": "Why does my ear hurt?",
+      "condition": "Ear pain",
+      "outcome": "found"
+    },
+    {
+      "question": "How can I calm dry, itchy eczema patches?",
+      "condition": "Eczema",
+      "outcome": "found"
+    },
+    {
+      "question": "What is emphysema and what causes it?",
+      "condition": "Emphysema",
+      "outcome": "found"
+    },
+    {
+      "question": "What treatments exist for erectile dysfunction?",
+      "condition": "Erectile dysfunction (ED)",
+      "outcome": "found"
+    },
+    {
+      "question": "How do I know if I have the flu?",
+      "condition": "Flu",
+      "outcome": "found"
+    },
+    {
+      "question": "What causes pain in the ball of the foot?",
+      "condition": "Foot pain",
+      "outcome": "found"
+    },
+    {
+      "question": "How is genital herpes treated?",
+      "condition": "Genital herpes",
+      "outcome": "found"
+    },
+    {
+      "question": "Why does the inside of my elbow hurt?",
+      "condition": "Golfer's elbow",
+      "outcome": "found"
+    },
+    {
+      "question": "What causes a sudden painful swollen big toe?",
+      "condition": "Gout",
+      "outcome": "found"
+    },
+    {
+      "question": "What are the different types of headaches?",
+      "condition": "Headache",
+      "outcome": "found"
+    },
+    {
+      "question": "Why do I wake up sweating at night?",
+      "condition": "Hot flashes & night sweats",
+      "outcome": "found"
+    },
+    {
+      "question": "How can I lower my high blood pressure?",
+      "condition": "Hypertension",
+      "outcome": "found"
+    },
+    {
+      "question": "What are the symptoms of an underactive thyroid?",
+      "condition": "Hypothyroidism",
+      "outcome": "found"
+    },
+    {
+      "question": "What can I do if I can't fall asleep?",
+      "condition": "Insomnia",
+      "outcome": "found"
+    },
+    {
+      "question": "What are the symptoms of IBS?",
+      "condition": "Irritable bowel syndrome",
+      "outcome": "found"
+    },
+    {
+      "question": "What could cause pain in my knee?",
+      "condition": "Knee pain",
+      "outcome": "found"
+    },
+    {
+      "question": "What are the signs of Lyme disease after a tick bite?",
+      "condition": "Lyme disease",
+      "outcome": "found"
+    },
+    {
+      "question": "How can I avoid malaria when traveling?",
+      "condition": "Malaria prevention",
+      "outcome": "found"
+    },
+    {
+      "question": "Why is my breast painful and red while breastfeeding?",
+      "condition": "Mastitis",
+      "outcome": "found"
+    },
+    {
+      "question": "What are common symptoms of menopause?",
+      "condition": "Menopause",
+      "outcome": "found"
+    },
+    {
+      "question": "How are migraines treated?",
+      "condition": "Migraine",
+      "outcome": "found"
+    },
+    {
+      "question": "What helps when I keep throwing up?",
+      "condition": "Nausea and vomiting",
+      "outcome": "none"
+    },
+    {
+      "question": "Why is my neck stiff and sore?",
+      "condition": "Neck pain",
+      "outcome": "found"
+    },
+    {
+      "question": "What is obsessive compulsive disorder?",
+      "condition": "OCD",
+      "outcome": "found"
+    },
+    {
+      "question": "How is osteoarthritis in the joints treated?",
+      "condition": "Osteoarthritis",
+      "outcome": "found"
+    },
+    {
+      "question": "What does a panic attack feel like?",
+      "condition": "Panic attack",
+      "outcome": "found"
+    },
+    {
+      "question": "How are phobias treated?",
+      "condition": "Phobia",
+      "outcome": "found"
+    },
+    {
+      "question": "How do I know if I have pink eye?",
+      "condition": "Pink eye",
+      "outcome": "found"
+    },
+    {
+      "question": "Why does my heel hurt in the morning?",
+      "condition": "Plantar fasciitis",
+      "outcome": "found"
+    },
+    {
+      "question": "How do I treat a poison ivy rash?",
+      "condition": "Poison ivy & poison oak",
+      "outcome": "found"
+    },
+    {
+      "question": "Is it normal to feel very sad after having a baby?",
+      "condition": "Postpartum depression",
+      "outcome": "found"
+    },
+    {
+      "question": "What are the symptoms of PMS?",
+      "condition": "Premenstrual syndrome",
+      "outcome": "found"
+    },
+    {
+      "question": "What are the symptoms of post-traumatic stress disorder?",
+      "condition": "PTSD",
+      "outcome": "found"
+    },
+    {
+      "question": "What could cause a red skin rash?",
+      "condition": "Rash",
+      "outcome": "found"
+    },
+    {
+      "question": "Why do my legs feel like they need to move at night?",
+      "condition": "Restless leg",
+      "outcome": "found"
+    },
+    {
+      "question": "What causes redness and flushing on my cheeks?",
+      "condition": "Rosacea",
+      "outcome": "found"
+    },
+    {
+      "question": "Why does my knee hurt when I run?",
+      "condition": "Runner's knee",
+      "outcome": "found"
+    },
+    {
+      "question": "What are the symptoms of shingles?",
+      "condition": "Shingles",
+      "outcome": "found"
+    },
+    {
+      "question": "Do I need antibiotics for a sinus infection?",
+      "condition": "Sinus infection",
+      "outcome": "found"
+    },
+    {
+      "question": "What helps a sore throat?",
+      "condition": "Sore throat",
+      "outcome": "found"
+    },
+    {
+      "question": "How should I treat a sprained ankle?",
+      "condition": "Sprains and strains",
+      "outcome": "found"
+    },
+    {
+      "question": "How long does the stomach flu last?",
+      "condition": "Stomach flu",
+      "outcome": "wrong"
+    },
+    {
+      "question": "How is strep throat diagnosed?",
+      "condition": "Strep throat",
+      "outcome": "found"
+    },
+    {
+      "question": "What causes pain on the outside of the elbow?",
+      "condition": "Tennis elbow",
+      "outcome": "found"
+    },
+    {
+      "question": "What are the white patches in my mouth?",
+      "condition": "Thrush",
+      "outcome": "found"
+    },
+    {
+      "question": "What is an upper respiratory infection?",
+      "condition": "Upper respiratory infections",
+      "outcome": "found"
+    },
+    {
+      "question": "What are the symptoms of a urinary tract infection?",
+      "condition": "UTI",
+      "outcome": "found"
+    },
+    {
+      "question": "Why does the room spin when I stand up?",
+      "condition": "Vertigo",
+      "outcome": "found"
+    },
+    {
+      "question": "What causes chronic pain in the vulva?",
+      "condition": "Vulvodynia",
+      "outcome": "found"
+    },
+    {
+      "question": "What causes vaginal dryness after menopause?",
+      "condition": "Vulvovaginal atrophy",
+      "outcome": "found"
+    },
+    {
+      "question": "How is the Zika virus spread?",
+      "condition": "Zika",
+      "outcome": "found"
+    },
+    {
+      "question": "Who won the last football world cup?",
+      "condition": null,
+      "outcome": "silent"
+    },
+    {
+      "question": "How do I reset my router?",
+      "condition": null,
+      "outcome": "silent"
+    },
+    {
+      "question": "What is the capital of Australia?",
+      "condition": null,
+      "outcome": "silent"
+    },
+    {
+      "question": "Can you recommend a good pizza recipe?",
+      "condition": null,
+      "outcome": "silent"
+    },
+    {
+      "question": "How do I change a flat tire?",
+      "condition": null,
+      "outcome": "silent"
+    },
+    {
+      "question": "What's the best programming language to learn?",
+      "condition": null,
+      "outcome": "silent"
+    },
+    {
+      "question": "How much does a flight to Madrid cost?",
+      "condition": null,
+      "outcome": "silent"
+    },
+    {
+      "question": "Explain how blockchain works.",
+      "condition": null,
+      "outcome": "silent"
+    },
+    {
+      "question": "What time is it in Tokyo?",
+      "condition": null,
+      "outcome": "silent"
+    },
+    {
+      "question": "How do I file my taxes?",
+      "condition": null,
+      "outcome": "silent"
+    },
+    {
+      "question": "How are kidney stones treated?",
+      "condition": null,
+      "outcome": "silent"
+    },
+    {
+      "question": "What are the stages of breast cancer?",
+      "condition": null,
+      "outcome": "silent"
+    },
+    {
+      "question": "How do I treat a broken arm?",
+      "condition": null,
+      "outcome": "silent"
+    },
+    {
+      "question": "When should my child get the measles vaccine?",
+      "condition": null,
+      "outcome": "silent"
+    },
+    {
+      "question": "What are the symptoms of appendicitis?",
+      "condition": null,
+      "outcome": "leak"
+    },
+    {
+      "question": "How is epilepsy treated?",
+      "condition": null,
+      "outcome": "silent"
+    }
+  ]
+}

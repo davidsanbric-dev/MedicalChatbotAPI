@@ -1,4 +1,4 @@
-.PHONY: help install test db-up db-down api docker-up docker-down
+.PHONY: help install test db-up db-down api eval-retrieval eval-agent docker-up docker-down
 
 # Load variables from .env (POSTGRES_*, API_PORT, GEMINI_API_KEY, ...)
 ifneq (,$(wildcard .env))
@@ -13,6 +13,8 @@ help:
 	@echo "  db-up       Start the local Postgres (pgvector) container"
 	@echo "  db-down     Stop the local Postgres container"
 	@echo "  api         Run the API locally with uv + uvicorn (auto-reload)"
+	@echo "  eval-retrieval  Score retrieval on evals/retrieval_cases.jsonl (local DB, no LLM)"
+	@echo "  eval-agent  Check the agent's tool choices on evals/agent_cases.jsonl (local DB + LLM)"
 	@echo "  docker-up   Build and start the full stack (postgres + api) in Docker"
 	@echo "  docker-down Stop and remove the full stack"
 
@@ -35,6 +37,15 @@ db-down:
 api: db-up
 	DATABASE_URL=postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB) \
 		uv run uvicorn app.main:app --host 0.0.0.0 --port $(API_PORT) --reload
+
+# Evaluations run against the Postgres container on localhost, like `make api`.
+LOCAL_DATABASE_URL = postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)
+
+eval-retrieval: db-up
+	@DATABASE_URL=$(LOCAL_DATABASE_URL) uv run python -m evals.retrieval
+
+eval-agent: db-up
+	@DATABASE_URL=$(LOCAL_DATABASE_URL) uv run python -m evals.agent
 
 docker-up:
 	docker compose up -d --build

@@ -87,7 +87,7 @@ async def test_an_off_topic_question_is_answered_without_context(monkeypatch):
 
 
 def test_search_keeps_the_top_passages_above_the_threshold(monkeypatch):
-    rows = [SimpleNamespace(content=f"p{i}", similarity=0.5) for i in range(8)]
+    rows = [SimpleNamespace(content=f"p{i}", similarity=0.5, condition="Acne") for i in range(8)]
     scores = [-5.0, 4.0, 1.0, -1.9, 3.0, 2.0, 0.5, -2.0]
     monkeypatch.setattr(retrieval, "embed_query", lambda query: [0.0])
     monkeypatch.setattr(retrieval.documents, "nearest", lambda vector, limit: rows)

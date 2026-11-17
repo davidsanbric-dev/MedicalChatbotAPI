@@ -70,6 +70,24 @@ class Document(Base):
     )
 
 
+class HandoffRequest(Base):
+    """A conversation the agent escalated to a human (written by this API's agent).
+
+    The stand-in for a ticket in a CRM or help desk: a person picks up open requests,
+    most urgent first, and reads the conversation by session_id.
+    """
+
+    __tablename__ = "handoff_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[str] = mapped_column(index=True)
+    urgency: Mapped[str]  # "routine" | "urgent" | "emergency"
+    reason: Mapped[str] = mapped_column(Text)
+    last_message: Mapped[str] = mapped_column(Text)  # what the visitor said when it was raised
+    status: Mapped[str] = mapped_column(default="open", server_default="open")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class ChatHistory(Base):
     """One chat session's LangChain messages (written by this API)."""
 

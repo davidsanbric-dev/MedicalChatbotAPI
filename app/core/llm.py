@@ -3,6 +3,10 @@
 See "Provider failover" in https://medicalchatbot.demos.davieldev.com/api#notes
 """
 
+from collections.abc import Sequence
+
+from langchain_core.runnables import Runnable
+from langchain_core.tools import BaseTool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 
@@ -25,6 +29,7 @@ gemini_llm = ChatGoogleGenerativeAI(
 # If a call to OpenRouter fails (auth, rate limit, outage, removed model, ...),
 # LangChain sends the same request to Gemini via `with_fallbacks`. That fallback
 # is the retry: retrying a busy free model first only delays the answer.
+openrouter_llm = None
 if OPENROUTER_API_KEY:
     openrouter_llm = ChatOpenAI(
         model=OPENROUTER_MODEL,
@@ -37,6 +42,24 @@ if OPENROUTER_API_KEY:
 else:
     # No OpenRouter key configured: fall back to Gemini as the sole provider.
     llm = gemini_llm
+
+
+def with_tools(tools: Sequence[BaseTool]) -> Runnable:
+    """The chat model able to call `tools`, with the same Gemini fallback as `llm`.
+
+    Tools are bound to each provider before `with_fallbacks`: the fallback wrapper
+    itself has no bind_tools, and Gemini must know the tools too when it answers.
+    """
+    if openrouter_llm is None:
+        return gemini_llm.bind_tools(tools)
+    return openrouter_llm.bind_tools(tools).with_fallbacks([gemini_llm.bind_tools(tools)])
+
+
+def text_of(content: str | list) -> str:
+    """Message content as plain text; some providers send a list of content parts."""
+    if isinstance(content, str):
+        return content
+    return "".join(part.get("text", "") if isinstance(part, dict) else str(part) for part in content)
 
 
 def model_name_of(message) -> str:

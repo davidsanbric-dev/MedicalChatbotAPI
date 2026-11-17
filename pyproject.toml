@@ -38,3 +38,7 @@ packages = ["app"]
 dev = [
     "pytest>=9.2.0",
 ]
+
+[tool.pytest.ini_options]
+# Lets the tests import the evals package, which isn't installed with the app.
+pythonpath = ["."]

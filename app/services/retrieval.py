@@ -15,7 +15,10 @@ logger = logging.getLogger(__name__)
 
 TOP_K = 20  # nearest passages pulled by the vector search
 TOP_N = 5  # at most this many reach the LLM
-RELEVANCE_THRESHOLD = -2.0  # cross-encoder score; below it a passage is off-topic
+# Cross-encoder score; below it a passage is off-topic. Chosen with `make eval-retrieval`
+# (evals/results/retrieval.md): -3 answers more real questions than -2 while still
+# returning nothing for nearly every question the knowledge base cannot answer.
+RELEVANCE_THRESHOLD = -3.0
 
 
 @dataclass
@@ -23,26 +26,36 @@ class Passage:
     content: str
     similarity: float  # vector search: 1 - cosine distance
     relevance: float  # cross-encoder score
+    condition: str | None = None  # the condition page it came from
 
 
 def search(query: str) -> list[Passage]:
     """The best passages for `query`, most relevant first. Empty when none clears the threshold,
     which turns an off-topic question into an explicit "nothing found"."""
+    ranked = rank(query)
+    relevant = [passage for passage in ranked if passage.relevance > RELEVANCE_THRESHOLD]
+    selected = relevant[:TOP_N]
+    _log(ranked, relevant, selected)
+    return selected
+
+
+def rank(query: str) -> list[Passage]:
+    """All TOP_K vector-search candidates, re-ranked by the cross-encoder (best first), before
+    the threshold and the TOP_N cut. The evaluation (evals/retrieval.py) scores each stage from this."""
     try:
         candidates = documents.nearest(embed_query(query), TOP_K)
         scores = relevance_scores(query, [row.content for row in candidates])
     except Exception as error:
         raise RetrievalError("Couldn't search the knowledge base. Please try again in a moment.") from error
 
-    ranked = sorted(
-        (Passage(row.content, row.similarity or 0.0, score) for row, score in zip(candidates, scores, strict=True)),
+    return sorted(
+        (
+            Passage(row.content, row.similarity or 0.0, score, row.condition)
+            for row, score in zip(candidates, scores, strict=True)
+        ),
         key=lambda passage: passage.relevance,
         reverse=True,
     )
-    relevant = [passage for passage in ranked if passage.relevance > RELEVANCE_THRESHOLD]
-    selected = relevant[:TOP_N]
-    _log(ranked, relevant, selected)
-    return selected
 
 
 def _log(ranked: list[Passage], relevant: list[Passage], selected: list[Passage]) -> None:

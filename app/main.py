@@ -15,7 +15,7 @@ from app.core.database import prepare_database
 from app.core.embedding import warm_up
 from app.core.exceptions import public_message
 from app.core.rate_limit import limit_chat
-from app.routes import chat, insights
+from app.routes import agent, chat, insights
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -53,6 +53,7 @@ async def health() -> dict[str, str]:
     return {"status": "healthy"}
 
 
-# Each chat turn costs two LLM calls, so only chat is rate limited.
+# Each chat turn costs two LLM calls and an agent turn up to four, so both share the chat limits.
 app.include_router(chat.router, prefix="/chat", tags=["Chat"], dependencies=[Depends(limit_chat)])
+app.include_router(agent.router, prefix="/agent", tags=["Agent"], dependencies=[Depends(limit_chat)])
 app.include_router(insights.router, prefix="/insights", tags=["Dataset insights"])

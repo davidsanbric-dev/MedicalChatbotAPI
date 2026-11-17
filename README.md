@@ -22,7 +22,7 @@ sequenceDiagram
     V->>A: POST /chat/stream {query, session_id}
     A->>L: 1 · rephrase with the conversation so far
     A->>D: 2 · 20 nearest passages (cosine)
-    A->>A: 3 · cross-encoder re-rank, keep ≤ 5 above −2.0
+    A->>A: 3 · cross-encoder re-rank, keep ≤ 5 above −3.0
     A->>L: 4 · answer from those passages
     L-->>V: tokens, streamed as Server-Sent Events
 ```
@@ -34,7 +34,50 @@ sequenceDiagram
 | 3 · Double-check each one | the same `search()`: `TOP_K`, `TOP_N` and `RELEVANCE_THRESHOLD`, charted in [Re-rank scores](https://medicalchatbot.demos.davieldev.com/api#rerank) |
 | 4 · Write the answer | `stream_reply()` in [`app/services/chat.py`](app/services/chat.py); OpenRouter with a Gemini fallback in [`app/core/llm.py`](app/core/llm.py) |
 
-Memory is one `chat_history` row per session ([`app/core/memory.py`](app/core/memory.py)). The four tables and how they link are on the [database page](https://medicalchatbot.demos.davieldev.com/database#schema). The API creates them at startup ([`app/core/database.py`](app/core/database.py)), along with the HNSW vector index, and upgrades older databases in place.
+Memory is one `chat_history` row per session ([`app/core/memory.py`](app/core/memory.py)). The four pipeline tables and how they link are on the [database page](https://medicalchatbot.demos.davieldev.com/database#schema); the agent adds a fifth, `handoff_requests`. The API creates them at startup ([`app/core/database.py`](app/core/database.py)), along with the HNSW vector index, and upgrades older databases in place.
+
+## The agent: tool calling and human handoff
+
+`/agent` answers the same questions, but the model chooses its own steps instead of following the fixed four. Each turn it may call tools, read their results and call more (at most 4 model calls), then answer:
+
+```mermaid
+flowchart LR
+    q([Visitor message]) --> g{Emergency wording?}
+    g -- yes --> e[Open an emergency handoff,<br/>reply with safety advice]
+    g -- no --> m[LLM with tools]
+    m -- tool call --> t[search_knowledge_base<br/>list_conditions<br/>request_human_handoff]
+    t -- result --> m
+    m -- text --> a([Answer + sources])
+```
+
+| Tool | What it does |
+| --- | --- |
+| `search_knowledge_base` | Steps 2 and 3 above (vector search, re-rank, threshold); the passages come back labelled with their condition, which the answer cites |
+| `list_conditions` | The conditions the knowledge base covers |
+| `request_human_handoff` | Opens a `handoff_requests` row (urgency `routine`, `urgent` or `emergency`), the stand-in for a CRM or help-desk ticket |
+
+Guardrails: emergency wording in English or Spanish (chest pain, can't breathe, suicide…) escalates before the model is asked, so a model mistake cannot miss it; tool arguments are validated by their schemas, and a failing tool returns an error the model can react to instead of ending the turn. The prompt forbids diagnoses, prescriptions and dosages. Code: [`app/services/agent.py`](app/services/agent.py); tests with a scripted model in [`tests/test_agent.py`](tests/test_agent.py).
+
+## Evaluation
+
+Two offline evaluations measure what the pipeline does, rather than how it looks in a demo. Results are committed in [`evals/results/`](evals/results/).
+
+**Retrieval** (`make eval-retrieval`; local database, no LLM calls, about 2 minutes). 76 questions, one per condition, written the way visitors ask them, plus 16 that the knowledge base can't answer (10 unrelated, 6 medical topics it doesn't cover). A passage counts as relevant when it comes from the question's condition. Each question is retrieved once and scored at every stage. On the 565 passages of worker v6:
+
+| Stage (k = 5) | Precision | Hit rate | MRR | Real questions left with no passages | Uncovered questions correctly empty |
+| --- | --- | --- | --- | --- | --- |
+| Vector search only | 66% | 100% | 0.95 | 0% | 0% |
+| + cross-encoder re-rank | 63% | 100% | 0.93 | 0% | 0% |
+| + relevance threshold −3.0 (production) | 71% | 92% | 0.88 | 5% | 94% |
+
+- **The threshold was chosen from a sweep.** Every value from −6 to 0 is scored on the same questions ([report](evals/results/retrieval.md)). −3 keeps 15 of the 16 uncovered questions empty while leaving only 5% of real ones without passages; −2, the previous value, left 8% without, for no gain on uncovered ones.
+- **The re-ranker barely reorders now, but it is what lets the pipeline stay silent.** Cosine similarity always returns 20 neighbours; the cross-encoder's scores are what the threshold cuts on.
+- **The evaluation caught a silent embedding mismatch.** On an older local copy, embedded before the worker used the API's question model (worker `e27bc47`), vector search alone found the right condition for only 72% of questions and the re-ranker had to rescue it (88%). Re-embedding with the same model as the questions brought vector search to 100%. If a deployment's passages predate that commit, run the worker with `--reembed`.
+- The report lists the questions that still go wrong: 6 real ones, mostly everyday wording such as "chest cold" for bronchitis, and one uncovered question (appendicitis) that matches other "-itis" conditions.
+
+**Agent tool choice** (`make eval-agent`; local database plus the LLM keys). 16 messages in English and Spanish, each labelled with the action expected: search, list the conditions, hand off to a human, answer directly, or trip the emergency guardrail. On the default free model the agent chose correctly in 16 of 16, with no unnecessary handoffs, in both runs so far ([report](evals/results/agent.md)). Turn times depend on the free tier: a median of 5.5 s in the first run, 14 s in a later one after a day of requests. The run deletes the sessions and handoff requests it creates.
+
+The website shows both results on its [API page](https://medicalchatbot.demos.davieldev.com/api), from the JSON files written next to each report.
 
 ## Quick start
 
@@ -53,11 +96,13 @@ To develop with auto-reload, run `make api`: it starts only Postgres in Docker a
 | --- | --- |
 | `POST /chat/stream` | Server-Sent Events: `{"stage": …}`, `{"token": …}`, then `{"answer": …}`, or `{"error": …}` |
 | `POST /chat/` | `{"response": …}`, the same pipeline without streaming |
+| `POST /agent/stream` | Server-Sent Events: `{"tool": …, "args": …}` per tool call, `{"handoff": {"id", "urgency"}}` when one is opened, then `{"answer": …, "sources": […]}` |
+| `POST /agent/` | `{"response", "sources", "tools", "handoff"}`, the same agent without streaming |
 | `GET /insights/condition-names` | Every condition name |
 | `GET /insights/top-symptoms?top_n=10` | `[symptom, number of conditions]` pairs (`top_n` from 1 to 100) |
 | `GET /health` | `{"status": "healthy"}` |
 
-Both chat endpoints take `{"query": "...", "session_id": "..."}`. A query is 1 to 1000 characters, and `session_id` keys the conversation's memory; invalid bodies get a `422`. If something fails, visitors get a plain message, and details such as database errors stay in the server log.
+The chat and agent endpoints take `{"query": "...", "session_id": "..."}` and share the chat rate limits. A query is 1 to 1000 characters, and `session_id` keys the conversation's memory; invalid bodies get a `422`. If something fails, visitors get a plain message, and details such as database errors stay in the server log.
 
 ## Configuration
 
