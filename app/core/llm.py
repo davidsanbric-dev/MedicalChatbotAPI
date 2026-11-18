@@ -3,6 +3,7 @@
 See "Provider failover" in https://medicalchatbot.demos.davieldev.com/api#notes
 """
 
+import json
 from collections.abc import Sequence
 
 from langchain_core.runnables import Runnable
@@ -60,6 +61,17 @@ def text_of(content: str | list) -> str:
     if isinstance(content, str):
         return content
     return "".join(part.get("text", "") if isinstance(part, dict) else str(part) for part in content)
+
+
+def unwrap_json_answer(text: str) -> str:
+    """Some models wrap the whole answer in JSON, like {"response": "..."}: keep only the text."""
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        return text
+    if isinstance(parsed, dict):
+        return parsed.get("response") or parsed.get("content") or parsed.get("detail") or text
+    return text
 
 
 def model_name_of(message) -> str:

@@ -1,7 +1,8 @@
 """One chat turn: understand the question, find passages, stream the answer.
 
 These are the four steps on https://medicalchatbot.demos.davieldev.com/api. The events
-are what the chat shows while it waits (https://medicalchatbot.demos.davieldev.com/interface#streaming):
+(ChatEvent in app/schemas.py) are what the chat shows while it waits
+(https://medicalchatbot.demos.davieldev.com/interface#streaming):
     {"stage": "rephrasing"}             understanding the question
     {"stage": "retrieving"}             searching the knowledge base
     {"stage": "found", "count": int}    passages selected as context
@@ -10,22 +11,18 @@ are what the chat shows while it waits (https://medicalchatbot.demos.davieldev.c
 """
 
 import asyncio
-import json
 import logging
 from collections.abc import AsyncIterator
-from typing import Any
 
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
-from app.core.llm import llm, model_name_of, text_of
-from app.core.memory import PostgresChatHistory
-from app.core.prompts import ANSWER_PROMPT, REPHRASE_PROMPT
-from app.schemas import ChatRequest
+from app.core.llm import llm, model_name_of, text_of, unwrap_json_answer
+from app.core.prompts import ANSWER_PROMPT, REPHRASE_PROMPT, answer_context
+from app.repositories.chat_history import PostgresChatHistory
+from app.schemas import ChatEvent, ChatRequest
 from app.services import retrieval
 
 logger = logging.getLogger(__name__)
-
-NO_CONTEXT = "No relevant information found in the knowledge base for this query."
 
 _rephrase_chain = REPHRASE_PROMPT | llm
 # Loads the session's history into the prompt, and saves the new turn once answered.
@@ -37,7 +34,7 @@ _answer_chain = RunnableWithMessageHistory(
 )
 
 
-async def stream_reply(request: ChatRequest) -> AsyncIterator[dict[str, Any]]:
+async def stream_reply(request: ChatRequest) -> AsyncIterator[ChatEvent]:
     yield {"stage": "rephrasing"}
     question = await _rephrase(request)
 
@@ -48,8 +45,7 @@ async def stream_reply(request: ChatRequest) -> AsyncIterator[dict[str, Any]]:
         logger.warning("No relevant passages for %r", question)
     yield {"stage": "found", "count": len(passages)}
 
-    context = "\n\n".join(passage.content for passage in passages) or NO_CONTEXT
-    async for event in _stream_answer(request, context):
+    async for event in _stream_answer(request, answer_context(passages)):
         yield event
 
 
@@ -71,7 +67,7 @@ async def _rephrase(request: ChatRequest) -> str:
     return question
 
 
-async def _stream_answer(request: ChatRequest, context: str) -> AsyncIterator[dict[str, Any]]:
+async def _stream_answer(request: ChatRequest, context: str) -> AsyncIterator[ChatEvent]:
     parts: list[str] = []
     model = "unknown"
     config = {"configurable": {"session_id": request.session_id}}
@@ -83,14 +79,3 @@ async def _stream_answer(request: ChatRequest, context: str) -> AsyncIterator[di
             yield {"token": token}
     logger.info("Answer generated [model=%s]", model)
     yield {"answer": unwrap_json_answer("".join(parts))}
-
-
-def unwrap_json_answer(text: str) -> str:
-    """Some models wrap the whole answer in JSON, like {"response": "..."}: keep only the text."""
-    try:
-        parsed = json.loads(text)
-    except ValueError:
-        return text
-    if isinstance(parsed, dict):
-        return parsed.get("response") or parsed.get("content") or parsed.get("detail") or text
-    return text

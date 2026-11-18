@@ -1,6 +1,6 @@
-from app.services.retrieval import Passage
+from app.domain.passages import Passage
 from evals.metrics import hit_rate, precision, recall, reciprocal_rank
-from evals.retrieval import pipeline, stages
+from evals.retrieval import stages
 
 
 def test_ranking_metrics():
@@ -25,4 +25,3 @@ def test_stages_order_by_similarity_then_relevance_then_threshold():
     assert [p.content for p in result["vector"]] == ["b", "c"]
     assert [p.content for p in result["reranked"]] == ["a", "b"]
     assert [p.content for p in result["pipeline"]] == ["a", "b"]
-    assert [p.content for p in pipeline(ranked, threshold=0.0)] == ["a"]

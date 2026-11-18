@@ -31,10 +31,10 @@ sequenceDiagram
 | --- | --- |
 | 1 · Understand the question | `_rephrase()` in [`app/services/chat.py`](app/services/chat.py), with the prompts in [`app/core/prompts.py`](app/core/prompts.py) |
 | 2 · Find similar passages | `search()` in [`app/services/retrieval.py`](app/services/retrieval.py) → `nearest()` in [`app/repositories/documents.py`](app/repositories/documents.py) |
-| 3 · Double-check each one | the same `search()`: `TOP_K`, `TOP_N` and `RELEVANCE_THRESHOLD`, charted in [Re-rank scores](https://medicalchatbot.demos.davieldev.com/api#rerank) |
+| 3 · Double-check each one | the same `search()`; which passages count (`RELEVANCE_THRESHOLD`, `TOP_N`) is the rule in [`app/domain/passages.py`](app/domain/passages.py), charted in [Re-rank scores](https://medicalchatbot.demos.davieldev.com/api#rerank) |
 | 4 · Write the answer | `stream_reply()` in [`app/services/chat.py`](app/services/chat.py); OpenRouter with a Gemini fallback in [`app/core/llm.py`](app/core/llm.py) |
 
-Memory is one `chat_history` row per session ([`app/core/memory.py`](app/core/memory.py)). The four pipeline tables and how they link are on the [database page](https://medicalchatbot.demos.davieldev.com/database#schema); the agent adds a fifth, `handoff_requests`. The API creates them at startup ([`app/core/database.py`](app/core/database.py)), along with the HNSW vector index, and upgrades older databases in place.
+Memory is one `chat_history` row per session ([`app/repositories/chat_history.py`](app/repositories/chat_history.py)). The four pipeline tables and how they link are on the [database page](https://medicalchatbot.demos.davieldev.com/database#schema); the agent adds a fifth, `handoff_requests`. The API creates them at startup ([`app/core/database.py`](app/core/database.py)), along with the HNSW vector index, and upgrades older databases in place.
 
 ## The agent: tool calling and human handoff
 
@@ -56,7 +56,7 @@ flowchart LR
 | `list_conditions` | The conditions the knowledge base covers |
 | `request_human_handoff` | Opens a `handoff_requests` row (urgency `routine`, `urgent` or `emergency`), the stand-in for a CRM or help-desk ticket |
 
-Guardrails: emergency wording in English or Spanish (chest pain, can't breathe, suicide…) escalates before the model is asked, so a model mistake cannot miss it; tool arguments are validated by their schemas, and a failing tool returns an error the model can react to instead of ending the turn. The prompt forbids diagnoses, prescriptions and dosages. Code: [`app/services/agent.py`](app/services/agent.py); tests with a scripted model in [`tests/test_agent.py`](tests/test_agent.py).
+Guardrails: emergency wording in English or Spanish (chest pain, can't breathe, suicide…) escalates before the model is asked, so a model mistake cannot miss it; tool arguments are validated by their schemas, and a failing tool returns an error the model can react to instead of ending the turn. The prompt forbids diagnoses, prescriptions and dosages. Code: [`app/services/agent.py`](app/services/agent.py), with the emergency wording in [`app/domain/triage.py`](app/domain/triage.py) and the handoff in [`app/domain/handoff.py`](app/domain/handoff.py); tests with a scripted model in [`tests/test_agent.py`](tests/test_agent.py).
 
 ## Evaluation
 
@@ -78,6 +78,18 @@ Two offline evaluations measure what the pipeline does, rather than how it looks
 **Agent tool choice** (`make eval-agent`; local database plus the LLM keys). 16 messages in English and Spanish, each labelled with the action expected: search, list the conditions, hand off to a human, answer directly, or trip the emergency guardrail. On the default free model the agent chose correctly in 16 of 16, with no unnecessary handoffs, in both runs so far ([report](evals/results/agent.md)). Turn times depend on the free tier: a median of 5.5 s in the first run, 14 s in a later one after a day of requests. The run deletes the sessions and handoff requests it creates.
 
 The website shows both results on its [API page](https://medicalchatbot.demos.davieldev.com/api), from the JSON files written next to each report.
+
+## Code layout
+
+Each layer imports only from the layers above it in this table.
+
+| Folder | Holds | Example |
+|---|---|---|
+| [`app/domain/`](app/domain/) | The rules, in plain Python with no I/O | which passages are relevant, emergency wording, a handoff |
+| [`app/core/`](app/core/) | Settings and the clients for the database and the models, plus the prompts | `llm.py`, `embedding.py`, `models.py` |
+| [`app/repositories/`](app/repositories/) | SQL, one module per table | `documents.nearest()` |
+| [`app/services/`](app/services/) | The chat, the agent and retrieval, built from the layers above | `chat.stream_reply()` |
+| [`app/routes/`](app/routes/) | HTTP: endpoints, Server-Sent Events, rate limits | `POST /chat/stream` |
 
 ## Quick start
 
@@ -120,7 +132,7 @@ The chat and agent endpoints take `{"query": "...", "session_id": "..."}` and sh
 
 ### Rate limiting behind proxies
 
-Each chat turn costs two LLM calls, so the chat endpoints are rate limited with sliding windows ([`app/core/rate_limit.py`](app/core/rate_limit.py)). A rejected request uses no quota and gets `429` with `Retry-After`. Counters live in process memory: they reset on restart, and several replicas would need a shared store such as Redis.
+Each chat turn costs two LLM calls, so the chat endpoints are rate limited with sliding windows ([`app/routes/rate_limit.py`](app/routes/rate_limit.py)). A rejected request uses no quota and gets `429` with `Retry-After`. Counters live in process memory: they reset on restart, and several replicas would need a shared store such as Redis.
 
 A client is identified by its address. Behind reverse proxies, that address is the proxy's, so every visitor would share one bucket. To avoid this, set `TRUSTED_PROXY_HOPS` to the number of proxies that append to `X-Forwarded-For`. The client is then read that many entries from the right, so anything a caller forges on the left is ignored.
 

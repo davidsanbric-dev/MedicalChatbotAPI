@@ -81,7 +81,7 @@ class HandoffRequest(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     session_id: Mapped[str] = mapped_column(index=True)
-    urgency: Mapped[str]  # "routine" | "urgent" | "emergency"
+    urgency: Mapped[str]  # an app.domain.handoff.Urgency value
     reason: Mapped[str] = mapped_column(Text)
     last_message: Mapped[str] = mapped_column(Text)  # what the visitor said when it was raised
     status: Mapped[str] = mapped_column(default="open", server_default="open")

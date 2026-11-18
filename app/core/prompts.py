@@ -1,7 +1,13 @@
-"""The two prompts behind each chat turn (rephrase the question, then answer it from the
-passages), and the agent's system prompt (app/services/agent.py)."""
+"""Everything the model reads: the two prompts behind each chat turn (rephrase the question,
+then answer it from the passages), the agent's system prompt (app/services/agent.py), and
+how passages are written into each."""
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+from app.domain.passages import Passage
+
+NO_CONTEXT = "No relevant information found in the knowledge base for this query."
+NO_SEARCH_RESULTS = "No relevant passages found for this query."
 
 ANSWER_PROMPT = ChatPromptTemplate.from_messages([
     ("system", '''You are an expert and helpful AI assistant. Your task is to answer the user's question based on two sources of information:
@@ -37,3 +43,19 @@ Rules:
 - Never diagnose, prescribe or give dosages. Share general information and suggest seeing a clinician.
 - Greetings, thanks and small talk need no tool: answer them directly in one short sentence.
 - Reply in the language of the visitor's last message, clearly and briefly (a few sentences or a short list)."""
+
+
+def answer_context(passages: list[Passage]) -> str:
+    """The {context} of ANSWER_PROMPT: the passages' text, best first."""
+    return "\n\n".join(passage.content for passage in passages) or NO_CONTEXT
+
+
+def search_results(passages: list[Passage]) -> str:
+    """The agent's search_knowledge_base result: numbered passages labelled with their condition,
+    so the answer can name the conditions it comes from."""
+    if not passages:
+        return NO_SEARCH_RESULTS
+    return "\n\n".join(
+        f"[{number}] ({passage.condition or 'unknown condition'}) {passage.content}"
+        for number, passage in enumerate(passages, 1)
+    )

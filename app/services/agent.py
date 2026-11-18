@@ -9,13 +9,13 @@ chooses the steps. One turn is a loop:
     3. Repeat until it answers in plain text, at most MAX_STEPS model calls.
 
 Guardrails around the loop:
-    - Emergency wording is caught before the model is asked: it opens an "emergency"
-      handoff and returns fixed safety advice, so a model mistake can't miss it.
+    - Emergency wording (app/domain/triage.py) is caught before the model is asked: it opens
+      an "emergency" handoff and returns fixed safety advice, so a model mistake can't miss it.
     - Tool arguments are validated by each tool's schema; a failing tool returns an error
       message to the model instead of ending the turn.
     - MAX_STEPS bounds the cost and latency of a model that keeps calling tools.
 
-Events, in the style of the chat stream:
+Events (AgentEvent in app/schemas.py), in the style of the chat stream:
     {"tool": str, "args": dict}                   a tool the agent is calling
     {"handoff": {"id": str, "urgency": str}}      a human handoff was opened
     {"answer": str, "sources": [str]}             the final answer and the conditions it used
@@ -23,26 +23,27 @@ Events, in the style of the chat stream:
 
 import asyncio
 import logging
-import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, Literal
 
 from langchain_core.messages import (
     AIMessage,
     BaseMessage,
     HumanMessage,
     SystemMessage,
+    ToolCall,
     ToolMessage,
 )
 from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import BaseModel, Field
 
-from app.core.llm import model_name_of, text_of, with_tools
-from app.core.memory import PostgresChatHistory
-from app.core.prompts import AGENT_SYSTEM_PROMPT
+from app.core.llm import model_name_of, text_of, unwrap_json_answer, with_tools
+from app.core.prompts import AGENT_SYSTEM_PROMPT, search_results
+from app.domain.handoff import Handoff, Urgency
+from app.domain.triage import EMERGENCY_ADVICE, is_emergency
 from app.repositories import handoffs
-from app.schemas import ChatRequest
+from app.repositories.chat_history import PostgresChatHistory
+from app.schemas import AgentEvent, AgentResponse, ChatRequest, HandoffEvent
 from app.services import insights, retrieval
 
 logger = logging.getLogger(__name__)
@@ -52,22 +53,6 @@ MAX_STEPS = 4  # model calls per turn
 STEP_LIMIT_ANSWER = (
     "I couldn't finish answering that. Please rephrase your question, or ask me to connect you with a person."
 )
-EMERGENCY_ANSWER = (
-    "This may be a medical emergency. Please call your local emergency number now "
-    "(123 in Colombia, 911 in the US and Mexico) or go to the nearest emergency room. "
-    "I have also alerted our care team (request {id})."
-)
-
-# English and Spanish wording that must never wait for a model's judgement.
-EMERGENCY_PATTERN = re.compile(
-    r"chest pain|can'?t breathe|cannot breathe|trouble breathing|struggling to breathe|"
-    r"suicid|kill(?:ing)? myself|end(?:ing)? my (?:own )?life|take my (?:own )?life|want to die|"
-    r"overdos|unconscious|passed out|"
-    r"face (?:is )?drooping|slurred speech|severe bleeding|bleeding (?:heavily|a lot)|"
-    r"dolor (?:de|en el) pecho|no puedo respirar|me cuesta respirar|quitarme la vida|"
-    r"suicidarme|matarme|sobredosis|inconsciente|sangrado (?:fuerte|abundante)",
-    re.IGNORECASE,
-)
 
 
 class SearchArgs(BaseModel):
@@ -76,7 +61,7 @@ class SearchArgs(BaseModel):
 
 class HandoffArgs(BaseModel):
     reason: str = Field(min_length=3, max_length=500, description="Why a human is needed, in one sentence.")
-    urgency: Literal["routine", "urgent", "emergency"] = Field(
+    urgency: Urgency = Field(
         description='"emergency" for life-threatening signs, "urgent" for care needed today, else "routine".'
     )
 
@@ -89,7 +74,7 @@ class Turn:
     message: str
     answer: str = ""
     sources: list[str] = field(default_factory=list)
-    handoff: dict[str, str] | None = None
+    handoff: Handoff | None = None
 
 
 def build_tools(turn: Turn) -> list[BaseTool]:
@@ -97,23 +82,19 @@ def build_tools(turn: Turn) -> list[BaseTool]:
 
     def search_knowledge_base(query: str) -> str:
         passages = retrieval.search(query)
-        if not passages:
-            return "No relevant passages found for this query."
         for passage in passages:
             if passage.condition and passage.condition not in turn.sources:
                 turn.sources.append(passage.condition)
-        return "\n\n".join(
-            f"[{number}] ({passage.condition or 'unknown condition'}) {passage.content}"
-            for number, passage in enumerate(passages, 1)
-        )
+        return search_results(passages)
 
     def list_conditions() -> str:
         return "The knowledge base covers: " + ", ".join(insights.condition_names())
 
-    def request_human_handoff(reason: str, urgency: str) -> str:
-        request_id = str(handoffs.create(turn.session_id, urgency, reason, turn.message))
-        turn.handoff = {"id": request_id, "urgency": urgency}
-        return f"Handoff request {request_id} opened with urgency {urgency}. A person from the care team will follow up."
+    def request_human_handoff(reason: str, urgency: Urgency) -> str:
+        handoff = Handoff(turn.session_id, Urgency(urgency), reason, turn.message)
+        handoffs.add(handoff)
+        turn.handoff = handoff
+        return f"Handoff request {handoff.id} opened with urgency {handoff.urgency}. A person from the care team will follow up."
 
     return [
         StructuredTool.from_function(
@@ -132,11 +113,11 @@ def build_tools(turn: Turn) -> list[BaseTool]:
     ]
 
 
-async def stream_run(request: ChatRequest) -> AsyncIterator[dict[str, Any]]:
+async def stream_run(request: ChatRequest) -> AsyncIterator[AgentEvent]:
     turn = Turn(request.session_id, request.query)
     memory = PostgresChatHistory(request.session_id)
 
-    if EMERGENCY_PATTERN.search(request.query):
+    if is_emergency(request.query):
         async for event in _escalate_emergency(turn):
             yield event
     else:
@@ -150,30 +131,34 @@ async def stream_run(request: ChatRequest) -> AsyncIterator[dict[str, Any]]:
     yield {"answer": turn.answer, "sources": turn.sources}
 
 
-async def run(request: ChatRequest) -> dict[str, Any]:
+async def run(request: ChatRequest) -> AgentResponse:
     """The non-streaming variant: the answer, the tools called and the handoff, if any."""
-    result: dict[str, Any] = {"response": "", "sources": [], "tools": [], "handoff": None}
+    result = AgentResponse(response="", sources=[], tools=[])
     async for event in stream_run(request):
         if "tool" in event:
-            result["tools"].append({"name": event["tool"], "args": event["args"]})
+            result.tools.append({"name": event["tool"], "args": event["args"]})
         elif "handoff" in event:
-            result["handoff"] = event["handoff"]
+            result.handoff = event["handoff"]
         elif "answer" in event:
-            result["response"], result["sources"] = event["answer"], event["sources"]
+            result.response, result.sources = event["answer"], event["sources"]
     return result
 
 
-async def _escalate_emergency(turn: Turn) -> AsyncIterator[dict[str, Any]]:
-    args = {"reason": "Emergency wording detected in the visitor's message.", "urgency": "emergency"}
-    yield {"tool": "request_human_handoff", "args": args}
-    request_id = await asyncio.to_thread(handoffs.create, turn.session_id, "emergency", args["reason"], turn.message)
-    turn.handoff = {"id": str(request_id), "urgency": "emergency"}
-    logger.warning("Emergency guardrail opened handoff %s for session %s", request_id, turn.session_id)
-    yield {"handoff": turn.handoff}
-    turn.answer = EMERGENCY_ANSWER.format(id=request_id)
+async def _escalate_emergency(turn: Turn) -> AsyncIterator[AgentEvent]:
+    handoff = Handoff.for_emergency(turn.session_id, turn.message)
+    yield {"tool": "request_human_handoff", "args": {"reason": handoff.reason, "urgency": handoff.urgency}}
+    await asyncio.to_thread(handoffs.add, handoff)
+    turn.handoff = handoff
+    logger.warning("Emergency guardrail opened handoff %s for session %s", handoff.id, turn.session_id)
+    yield _handoff_event(handoff)
+    turn.answer = EMERGENCY_ADVICE.format(id=handoff.id)
 
 
-async def _loop(turn: Turn, history: list[BaseMessage]) -> AsyncIterator[dict[str, Any]]:
+def _handoff_event(handoff: Handoff) -> HandoffEvent:
+    return {"handoff": {"id": str(handoff.id), "urgency": handoff.urgency}}
+
+
+async def _loop(turn: Turn, history: list[BaseMessage]) -> AsyncIterator[AgentEvent]:
     tools = build_tools(turn)
     by_name = {tool.name: tool for tool in tools}
     model = with_tools(tools)
@@ -183,7 +168,7 @@ async def _loop(turn: Turn, history: list[BaseMessage]) -> AsyncIterator[dict[st
         response = await model.ainvoke(messages)
         messages.append(response)
         if not response.tool_calls:
-            turn.answer = text_of(response.content).strip()
+            turn.answer = unwrap_json_answer(text_of(response.content).strip())
             logger.info("Agent answered after %d step(s) [model=%s]", step, model_name_of(response))
             return
         for call in response.tool_calls:
@@ -191,14 +176,14 @@ async def _loop(turn: Turn, history: list[BaseMessage]) -> AsyncIterator[dict[st
             handoff_before = turn.handoff
             result = await _call_tool(by_name, call)
             messages.append(ToolMessage(result, tool_call_id=call["id"], name=call["name"]))
-            if turn.handoff is not handoff_before:
-                yield {"handoff": turn.handoff}
+            if turn.handoff is not None and turn.handoff is not handoff_before:
+                yield _handoff_event(turn.handoff)
 
     logger.warning("Agent hit the %d-step limit for session %s", MAX_STEPS, turn.session_id)
     turn.answer = STEP_LIMIT_ANSWER
 
 
-async def _call_tool(by_name: dict[str, BaseTool], call: dict[str, Any]) -> str:
+async def _call_tool(by_name: dict[str, BaseTool], call: ToolCall) -> str:
     """Run one tool call; any failure goes back to the model as text it can react to."""
     tool = by_name.get(call["name"])
     if tool is None:

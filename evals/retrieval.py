@@ -25,8 +25,8 @@ from sqlalchemy import func, select
 
 from app.core.database import SessionLocal
 from app.core.models import Document, ProcessedData
+from app.domain.passages import RELEVANCE_THRESHOLD, TOP_N, Passage, select_relevant
 from app.services import retrieval
-from app.services.retrieval import Passage
 from evals.metrics import hit_rate, precision, recall, reciprocal_rank
 
 HERE = Path(__file__).parent
@@ -60,14 +60,9 @@ def processor_versions() -> str:
         return ", ".join(versions) or "none"
 
 
-def stages(ranked: list[Passage], k: int, threshold: float = retrieval.RELEVANCE_THRESHOLD) -> dict[str, list[Passage]]:
+def stages(ranked: list[Passage], k: int, threshold: float = RELEVANCE_THRESHOLD) -> dict[str, list[Passage]]:
     by_similarity = sorted(ranked, key=lambda passage: passage.similarity, reverse=True)
-    return {"vector": by_similarity[:k], "reranked": ranked[:k], "pipeline": pipeline(ranked, threshold)}
-
-
-def pipeline(ranked: list[Passage], threshold: float) -> list[Passage]:
-    """What retrieval.search would return with this threshold."""
-    return [passage for passage in ranked if passage.relevance > threshold][: retrieval.TOP_N]
+    return {"vector": by_similarity[:k], "reranked": ranked[:k], "pipeline": select_relevant(ranked, threshold)}
 
 
 def sweep(cases: list[Case], ranked: list[list[Passage]], thresholds: list[float]) -> list[dict]:
@@ -75,8 +70,8 @@ def sweep(cases: list[Case], ranked: list[list[Passage]], thresholds: list[float
     (hit rate, precision) against staying silent on off-topic ones."""
     rows = []
     for threshold in thresholds:
-        on_topic = [(case, pipeline(r, threshold)) for case, r in zip(cases, ranked) if case.condition]
-        off_topic = [pipeline(r, threshold) for case, r in zip(cases, ranked) if not case.condition]
+        on_topic = [(case, select_relevant(r, threshold)) for case, r in zip(cases, ranked) if case.condition]
+        off_topic = [select_relevant(r, threshold) for case, r in zip(cases, ranked) if not case.condition]
         hits = [[p.condition == case.condition for p in passages] for case, passages in on_topic]
         rows.append({
             "threshold": threshold,
@@ -151,8 +146,8 @@ def report(result: dict, sweep_rows: list[dict]) -> str:
         (
             f"{result['on_topic']} questions about a known condition and {result['off_topic']} off-topic questions "
             f"(evals/retrieval_cases.jsonl). A passage is relevant when it comes from the question's condition. "
-            f"k = {k}; the pipeline keeps at most {retrieval.TOP_N} passages scoring above "
-            f"{retrieval.RELEVANCE_THRESHOLD} on the cross-encoder."
+            f"k = {k}; the pipeline keeps at most {TOP_N} passages scoring above "
+            f"{RELEVANCE_THRESHOLD} on the cross-encoder."
         ),
         "",
         "| Stage | Precision | Recall | Hit rate | MRR | On-topic with no passages | Off-topic correctly empty |",
@@ -183,7 +178,7 @@ def report(result: dict, sweep_rows: list[dict]) -> str:
         "| Threshold | Hit rate | Precision | On-topic with no passages | Off-topic correctly empty |",
         "| --- | --- | --- | --- | --- |",
         *(
-            f"| {row['threshold']:g}{' (current)' if row['threshold'] == retrieval.RELEVANCE_THRESHOLD else ''} "
+            f"| {row['threshold']:g}{' (current)' if row['threshold'] == RELEVANCE_THRESHOLD else ''} "
             f"| {row['hit_rate']:.0%} | {row['precision']:.0%} | {row['empty_on_topic']:.0%} | {row['abstained_off_topic']:.0%} |"
             for row in sweep_rows
         ),
@@ -229,8 +224,8 @@ def main() -> None:
         "processor": result["processor"],
         "documents": result["documents"],
         "k": result["k"],
-        "topN": retrieval.TOP_N,
-        "threshold": retrieval.RELEVANCE_THRESHOLD,
+        "topN": TOP_N,
+        "threshold": RELEVANCE_THRESHOLD,
         "onTopic": result["on_topic"],
         "offTopic": result["off_topic"],
         "stages": result["summary"],

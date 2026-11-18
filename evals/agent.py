@@ -22,6 +22,7 @@ from pathlib import Path
 
 from app.core.config import GEMINI_MODEL, OPENROUTER_API_KEY, OPENROUTER_MODEL
 from app.core.database import prepare_database
+from app.domain.triage import is_emergency
 from app.repositories import chat_history, handoffs
 from app.schemas import ChatRequest
 from app.services import agent
@@ -33,7 +34,7 @@ PAUSE_SECONDS = 2  # between cases, to stay under free-tier rate limits
 
 def outcome(message: str, tools: list[str]) -> str:
     """What the agent actually did, in the labels of agent_cases.jsonl."""
-    if agent.EMERGENCY_PATTERN.search(message):
+    if is_emergency(message):
         return "guardrail"
     return tools[0] if tools else "none"
 

@@ -1,15 +1,17 @@
 import json
-from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from app.core import prompts
 from app.core.exceptions import GENERIC_MESSAGE, RetrievalError
+from app.core.llm import unwrap_json_answer
+from app.domain.passages import Passage
 from app.main import app
+from app.repositories.documents import Candidate
 from app.schemas import ChatRequest
 from app.services import chat, insights, retrieval
-from app.services.retrieval import Passage
 
 
 @pytest.fixture
@@ -31,9 +33,9 @@ def test_chat_request_rejects_empty_long_or_anonymous_questions(body):
 
 
 def test_unwrap_json_answer():
-    assert chat.unwrap_json_answer('{"response": "Rest helps."}') == "Rest helps."
-    assert chat.unwrap_json_answer("Plain text.") == "Plain text."
-    assert chat.unwrap_json_answer("42") == "42"
+    assert unwrap_json_answer('{"response": "Rest helps."}') == "Rest helps."
+    assert unwrap_json_answer("Plain text.") == "Plain text."
+    assert unwrap_json_answer("42") == "42"
 
 
 async def collect(request):
@@ -83,11 +85,11 @@ async def test_an_off_topic_question_is_answered_without_context(monkeypatch):
     events = await collect(ChatRequest(query="Who won the world cup?", session_id="s"))
 
     assert {"stage": "found", "count": 0} in events
-    assert contexts == [chat.NO_CONTEXT]
+    assert contexts == [prompts.NO_CONTEXT]
 
 
 def test_search_keeps_the_top_passages_above_the_threshold(monkeypatch):
-    rows = [SimpleNamespace(content=f"p{i}", similarity=0.5, condition="Acne") for i in range(8)]
+    rows = [Candidate(f"p{i}", 0.5, "Acne") for i in range(8)]
     scores = [-5.0, 4.0, 1.0, -1.9, 3.0, 2.0, 0.5, -2.0]
     monkeypatch.setattr(retrieval, "embed_query", lambda query: [0.0])
     monkeypatch.setattr(retrieval.documents, "nearest", lambda vector, limit: rows)
@@ -126,3 +128,16 @@ def test_unexpected_errors_hide_their_details(client, monkeypatch):
 def test_top_n_is_bounded(client):
     assert client.get("/insights/top-symptoms?top_n=0").status_code == 422
     assert client.get("/insights/top-symptoms?top_n=101").status_code == 422
+
+
+def test_the_streams_and_errors_are_documented(client):
+    paths = client.get("/openapi.json").json()["paths"]
+    for path in ("/chat/stream", "/agent/stream"):
+        responses = paths[path]["post"]["responses"]
+        assert "text/event-stream" in responses["200"]["content"]
+        for status in ("429", "500"):
+            assert list(responses[status]["content"]) == ["application/json"]
+            assert responses[status]["content"]["application/json"]["schema"]["title"] == "ErrorResponse"
+    assert paths["/agent/"]["post"]["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AgentResponse"
+    }

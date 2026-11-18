@@ -1,14 +1,12 @@
 """The agent loop with a scripted model: no database, network or API keys."""
 
-import uuid
-
 import pytest
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.messages import AIMessage, ToolMessage
 
+from app.domain.passages import Passage
 from app.schemas import ChatRequest
 from app.services import agent, retrieval
-from app.services.retrieval import Passage
 
 
 class ScriptedModel:
@@ -38,11 +36,7 @@ def memory(monkeypatch):
 def tickets(monkeypatch):
     created = []
 
-    def create(session_id, urgency, reason, last_message):
-        created.append({"session_id": session_id, "urgency": urgency, "reason": reason, "last_message": last_message})
-        return uuid.UUID(int=len(created))
-
-    monkeypatch.setattr(agent.handoffs, "create", create)
+    monkeypatch.setattr(agent.handoffs, "add", created.append)
     return created
 
 
@@ -79,8 +73,9 @@ async def test_a_handoff_opens_a_request_and_is_reported(monkeypatch, memory, ti
 
     events = await collect("I need my prescription refilled")
 
-    assert tickets == [{"session_id": "s", "urgency": "routine", "reason": args["reason"], "last_message": "I need my prescription refilled"}]
-    assert {"handoff": {"id": str(uuid.UUID(int=1)), "urgency": "routine"}} in events
+    [ticket] = tickets
+    assert (ticket.session_id, ticket.urgency, ticket.reason, ticket.last_message) == ("s", "routine", args["reason"], "I need my prescription refilled")
+    assert {"handoff": {"id": str(ticket.id), "urgency": "routine"}} in events
     assert events[-1]["answer"] == "A person will follow up."
 
 
@@ -92,21 +87,9 @@ async def test_emergency_wording_escalates_without_asking_the_model(monkeypatch,
     events = await collect("Tengo dolor de pecho muy fuerte")
 
     assert model.calls == []
-    assert tickets[0]["urgency"] == "emergency"
+    assert tickets[0].urgency == "emergency"
     assert "123 in Colombia" in events[-1]["answer"]
-
-
-@pytest.mark.parametrize(
-    "message",
-    ["I've been thinking about ending my life", "I want to kill myself", "Mi hijo está inconsciente", "No puedo respirar"],
-)
-def test_emergency_wording_is_recognized(message):
-    assert agent.EMERGENCY_PATTERN.search(message)
-
-
-@pytest.mark.parametrize("message", ["My chest feels congested from a cold", "How long does the flu last?"])
-def test_ordinary_questions_are_not_emergencies(message):
-    assert not agent.EMERGENCY_PATTERN.search(message)
+    assert str(tickets[0].id) in events[-1]["answer"]
 
 
 @pytest.mark.anyio
@@ -140,4 +123,28 @@ async def test_greetings_need_no_tools(monkeypatch, memory):
 
     result = await agent.run(ChatRequest(query="hello", session_id="s"))
 
-    assert result == {"response": "Hi! How can I help?", "sources": [], "tools": [], "handoff": None}
+    assert result.model_dump() == {"response": "Hi! How can I help?", "sources": [], "tools": [], "handoff": None}
+
+
+@pytest.mark.anyio
+async def test_an_answer_wrapped_in_json_is_unwrapped(monkeypatch, memory):
+    use_model(monkeypatch, ScriptedModel(AIMessage('{"response": "Hi! How can I help?"}')))
+
+    events = await collect("hello")
+
+    assert events[-1]["answer"] == "Hi! How can I help?"
+
+
+@pytest.mark.anyio
+async def test_the_non_streaming_reply_lists_the_tools_and_the_handoff(monkeypatch, memory, tickets):
+    args = {"reason": "Wants a prescription refill.", "urgency": "routine"}
+    use_model(monkeypatch, ScriptedModel(tool_call("request_human_handoff", args), AIMessage("A person will follow up.")))
+
+    result = await agent.run(ChatRequest(query="I need my prescription refilled", session_id="s"))
+
+    assert result.model_dump(mode="json") == {
+        "response": "A person will follow up.",
+        "sources": [],
+        "tools": [{"name": "request_human_handoff", "args": args}],
+        "handoff": {"id": str(tickets[0].id), "urgency": "routine"},
+    }

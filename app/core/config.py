@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
 # --- Database ---
 DATABASE_URL = os.getenv("DATABASE_URL")
 

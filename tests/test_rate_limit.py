@@ -2,8 +2,8 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
-from app.core import rate_limit
-from app.core.rate_limit import SlidingWindowLimiter, client_ip
+from app.routes import rate_limit
+from app.routes.rate_limit import SlidingWindowLimiter, client_ip
 
 
 class FakeClock:

@@ -3,21 +3,25 @@
 The SQL it compiles to is in the "SQL" tab of https://medicalchatbot.demos.davieldev.com/database#sql
 """
 
-from collections.abc import Sequence
+from typing import NamedTuple
 
 import numpy as np
-from sqlalchemy import Row, select
+from sqlalchemy import select
 
 from app.core.database import SessionLocal
 from app.core.models import Document, ProcessedData
 
 
-def nearest(query_vector: np.ndarray, limit: int) -> Sequence[Row]:
-    """The `limit` passages closest in meaning, closest first, as (content, similarity, condition) rows.
+class Candidate(NamedTuple):
+    """A passage the vector search found, before the cross-encoder scores it."""
 
-    similarity = 1 - cosine distance: 1.0 points the same way, 0.0 is unrelated.
-    condition is the page the passage came from; None once that page's processed row is gone.
-    """
+    content: str
+    similarity: float | None  # 1 - cosine distance: 1.0 points the same way, 0.0 is unrelated
+    condition: str | None  # the page it came from; None once that page's processed row is gone
+
+
+def nearest(query_vector: np.ndarray, limit: int) -> list[Candidate]:
+    """The `limit` passages closest in meaning, closest first."""
     distance = Document.embedding.cosine_distance(query_vector)
     with SessionLocal() as session:
         query = (
@@ -26,4 +30,4 @@ def nearest(query_vector: np.ndarray, limit: int) -> Sequence[Row]:
             .order_by(distance)
             .limit(limit)
         )
-        return session.execute(query).all()
+        return [Candidate._make(row) for row in session.execute(query)]
