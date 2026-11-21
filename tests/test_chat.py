@@ -7,16 +7,21 @@ from pydantic import ValidationError
 from app.core import prompts
 from app.core.exceptions import GENERIC_MESSAGE, RetrievalError
 from app.core.llm import unwrap_json_answer
+from app.dependencies import get_chat_service, get_insights_service
 from app.domain.passages import Passage
 from app.main import app
 from app.repositories.documents import Candidate
 from app.schemas import ChatRequest
-from app.services import chat, insights, retrieval
+from app.services import retrieval
+from app.services.chat import ChatService
+from app.services.retrieval import RetrievalService
+from tests.conftest import StubRetrievalService
 
 
 @pytest.fixture
 def client():
-    return TestClient(app, raise_server_exceptions=False)
+    yield TestClient(app, raise_server_exceptions=False)
+    app.dependency_overrides.clear()
 
 
 @pytest.mark.parametrize(
@@ -38,12 +43,20 @@ def test_unwrap_json_answer():
     assert unwrap_json_answer("42") == "42"
 
 
-async def collect(request):
-    return [event async for event in chat.stream_reply(request)]
+def chat_service(chat_histories, passages, rephrase, stream_answer):
+    """A ChatService with fixed passages, and the two LLM steps replaced."""
+    service = ChatService(StubRetrievalService(passages), chat_histories)
+    service._rephrase = rephrase
+    service._stream_answer = stream_answer
+    return service
+
+
+async def collect(service, request):
+    return [event async for event in service.stream(request)]
 
 
 @pytest.mark.anyio
-async def test_a_turn_reports_each_stage_then_the_answer(monkeypatch):
+async def test_a_turn_reports_each_stage_then_the_answer(chat_histories):
     async def rephrase(request):
         return "acne treatment"
 
@@ -52,11 +65,10 @@ async def test_a_turn_reports_each_stage_then_the_answer(monkeypatch):
         yield {"token": "Use "}
         yield {"answer": "Use retinoids."}
 
-    monkeypatch.setattr(chat, "_rephrase", rephrase)
-    monkeypatch.setattr(chat, "_stream_answer", stream_answer)
-    monkeypatch.setattr(retrieval, "search", lambda query: [Passage("First passage.", 0.9, 3.0), Passage("Second passage.", 0.8, 1.0)])
+    passages = [Passage("First passage.", 0.9, 3.0), Passage("Second passage.", 0.8, 1.0)]
+    service = chat_service(chat_histories, passages, rephrase, stream_answer)
 
-    events = await collect(ChatRequest(query="How is acne treated?", session_id="s"))
+    events = await collect(service, ChatRequest(query="How is acne treated?", session_id="s"))
 
     assert events == [
         {"stage": "rephrasing"},
@@ -68,7 +80,7 @@ async def test_a_turn_reports_each_stage_then_the_answer(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_an_off_topic_question_is_answered_without_context(monkeypatch):
+async def test_an_off_topic_question_is_answered_without_context(chat_histories):
     contexts = []
 
     async def rephrase(request):
@@ -78,11 +90,9 @@ async def test_an_off_topic_question_is_answered_without_context(monkeypatch):
         contexts.append(context)
         yield {"answer": "I don't have that information."}
 
-    monkeypatch.setattr(chat, "_rephrase", rephrase)
-    monkeypatch.setattr(chat, "_stream_answer", stream_answer)
-    monkeypatch.setattr(retrieval, "search", lambda query: [])
+    service = chat_service(chat_histories, [], rephrase, stream_answer)
 
-    events = await collect(ChatRequest(query="Who won the world cup?", session_id="s"))
+    events = await collect(service, ChatRequest(query="Who won the world cup?", session_id="s"))
 
     assert {"stage": "found", "count": 0} in events
     assert contexts == [prompts.NO_CONTEXT]
@@ -91,21 +101,25 @@ async def test_an_off_topic_question_is_answered_without_context(monkeypatch):
 def test_search_keeps_the_top_passages_above_the_threshold(monkeypatch):
     rows = [Candidate(f"p{i}", 0.5, "Acne") for i in range(8)]
     scores = [-5.0, 4.0, 1.0, -1.9, 3.0, 2.0, 0.5, -2.0]
+    class Documents:
+        def nearest(self, vector, limit):
+            return rows
+
     monkeypatch.setattr(retrieval, "embed_query", lambda query: [0.0])
-    monkeypatch.setattr(retrieval.documents, "nearest", lambda vector, limit: rows)
     monkeypatch.setattr(retrieval, "relevance_scores", lambda query, passages: scores)
 
-    selected = retrieval.search("q")
+    selected = RetrievalService(Documents()).search("q")
 
     assert [p.content for p in selected] == ["p1", "p4", "p5", "p2", "p6"]  # top 5, best first
 
 
-def test_stream_errors_reach_the_visitor_as_a_safe_event(client, monkeypatch):
-    async def failing_stream(request):
-        yield {"stage": "rephrasing"}
-        raise RetrievalError("Couldn't search the knowledge base.")
+def test_stream_errors_reach_the_visitor_as_a_safe_event(client):
+    class FailingChatService:
+        async def stream(self, request):
+            yield {"stage": "rephrasing"}
+            raise RetrievalError("Couldn't search the knowledge base.")
 
-    monkeypatch.setattr(chat, "stream_reply", failing_stream)
+    app.dependency_overrides[get_chat_service] = FailingChatService
 
     response = client.post("/chat/stream", json={"query": "q", "session_id": "s"})
     events = [json.loads(line.removeprefix("data: ")) for line in response.text.splitlines() if line]
@@ -113,11 +127,12 @@ def test_stream_errors_reach_the_visitor_as_a_safe_event(client, monkeypatch):
     assert events == [{"stage": "rephrasing"}, {"error": "Couldn't search the knowledge base."}]
 
 
-def test_unexpected_errors_hide_their_details(client, monkeypatch):
-    def broken(limit):
-        raise RuntimeError("connection to server at 10.0.0.5 failed")
+def test_unexpected_errors_hide_their_details(client):
+    class BrokenInsightsService:
+        def top_symptoms(self, limit):
+            raise RuntimeError("connection to server at 10.0.0.5 failed")
 
-    monkeypatch.setattr(insights, "top_symptoms", broken)
+    app.dependency_overrides[get_insights_service] = BrokenInsightsService
 
     response = client.get("/insights/top-symptoms")
 

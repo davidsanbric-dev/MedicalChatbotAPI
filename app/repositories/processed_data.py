@@ -4,18 +4,23 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.core.database import SessionLocal
 from app.core.models import ProcessedData
+from app.repositories.base import BaseRepository
 
 
-def condition_names() -> list[str]:
-    """Every condition in the knowledge base, alphabetically."""
-    with SessionLocal() as session:
-        query = (select(ProcessedData.condition_name).distinct().order_by(ProcessedData.condition_name))
-        return list(session.scalars(query))
+class ProcessedDataRepository(BaseRepository):
+    model = ProcessedData
 
+    def condition_names(self) -> list[str]:
+        """Every condition in the knowledge base, alphabetically."""
+        query = select(ProcessedData.condition_name).distinct().order_by(ProcessedData.condition_name)
+        return self._scalars(query)
 
-def symptom_blocks() -> list[Any]:
-    """Each record's symptom block, as stored: [heading, [symptom, ...]] (or anything else on a bad record)."""
-    with SessionLocal() as session:
-        return list(session.scalars(select(ProcessedData.content["symptoms"])))
+    def symptom_blocks(self) -> list[Any]:
+        """Each record's symptom block, as stored: [heading, [symptom, ...]] (or anything else on a bad record)."""
+        return self._scalars(select(ProcessedData.content["symptoms"]))
+
+    def processor_versions(self) -> list[str]:
+        """The worker versions that produced the records, oldest first."""
+        query = select(ProcessedData.processor_version).distinct().order_by(ProcessedData.processor_version)
+        return self._scalars(query)

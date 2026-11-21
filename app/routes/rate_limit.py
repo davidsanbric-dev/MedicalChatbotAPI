@@ -82,44 +82,63 @@ def client_ip(request: Request, trusted_hops: int = TRUSTED_PROXY_HOPS) -> str:
     return chain[-(trusted_hops + 1)] if len(chain) > trusted_hops else chain[0]
 
 
-GLOBAL_KEY = "*"
+GLOBAL_KEY = "*"  # the one key every client shares in the global limiter
 
-_per_client = [
-    SlidingWindowLimiter(
-        CHAT_RATE_LIMIT_PER_MINUTE, MINUTE, "Too many questions in a short time. Please wait a moment."
-    ),
-    SlidingWindowLimiter(CHAT_RATE_LIMIT_PER_DAY, DAY, "You've reached today's question limit for this demo."),
-]
-_global = SlidingWindowLimiter(
-    CHAT_GLOBAL_LIMIT_PER_DAY, DAY, "The demo has reached its daily question limit. Please come back tomorrow."
-)
-_calls = 0
+Check = tuple[SlidingWindowLimiter, str]  # a limiter, and the key it counts this request under
 
 
-async def limit_chat(request: Request) -> None:
+class ChatRateLimit:
     """FastAPI dependency: reject the request with 429 when any limit is reached.
 
     All limits are checked before any is recorded, so a rejected request never
     uses up quota.
     """
-    global _calls
-    key = client_ip(request)
-    checks = [(limiter, key) for limiter in _per_client] + [(_global, GLOBAL_KEY)]
 
-    blocked = [(limiter.retry_after(k), limiter) for limiter, k in checks]
-    wait, limiter = max(blocked, key=lambda pair: pair[0])
-    if wait > 0:
-        logger.warning("Rate limit hit for %s (%d per %ds)", key, limiter.limit, limiter.window)
-        raise HTTPException(
-            status_code=429,
-            detail=limiter.message,
-            headers={"Retry-After": str(math.ceil(wait))},
-        )
+    SWEEP_EVERY = 1000  # requests between sweeps of idle clients
 
-    for limiter, k in checks:
-        limiter.hit(k)
+    def __init__(self, per_client: list[SlidingWindowLimiter], global_limit: SlidingWindowLimiter):
+        self.per_client = per_client
+        self.global_limit = global_limit
+        self._requests = 0
 
-    _calls += 1
-    if _calls % 1000 == 0:
-        for limiter, _ in checks:
-            limiter.sweep()
+    async def __call__(self, request: Request) -> None:
+        client = client_ip(request)
+        checks = self._checks_for(client)
+        self._reject_if_limited(checks, client)
+        self._record(checks)
+
+    def _checks_for(self, client: str) -> list[Check]:
+        return [(limiter, client) for limiter in self.per_client] + [(self.global_limit, GLOBAL_KEY)]
+
+    @staticmethod
+    def _reject_if_limited(checks: list[Check], client: str) -> None:
+        """Raise 429 for the limiter that blocks longest, with its message and Retry-After."""
+        wait, limiter = max(((limiter.retry_after(key), limiter) for limiter, key in checks), key=lambda pair: pair[0])
+        if wait > 0:
+            logger.warning("Rate limit hit for %s (%d per %ds)", client, limiter.limit, limiter.window)
+            raise HTTPException(
+                status_code=429,
+                detail=limiter.message,
+                headers={"Retry-After": str(math.ceil(wait))},
+            )
+
+    def _record(self, checks: list[Check]) -> None:
+        for limiter, key in checks:
+            limiter.hit(key)
+        self._requests += 1
+        if self._requests % self.SWEEP_EVERY == 0:
+            for limiter, _ in checks:
+                limiter.sweep()
+
+
+limit_chat = ChatRateLimit(
+    per_client=[
+        SlidingWindowLimiter(
+            CHAT_RATE_LIMIT_PER_MINUTE, MINUTE, "Too many questions in a short time. Please wait a moment."
+        ),
+        SlidingWindowLimiter(CHAT_RATE_LIMIT_PER_DAY, DAY, "You've reached today's question limit for this demo."),
+    ],
+    global_limit=SlidingWindowLimiter(
+        CHAT_GLOBAL_LIMIT_PER_DAY, DAY, "The demo has reached its daily question limit. Please come back tomorrow."
+    ),
+)

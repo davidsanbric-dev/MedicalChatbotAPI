@@ -16,8 +16,9 @@ EMERGENCY_REASON = "Emergency wording detected in the visitor's message."
 
 @dataclass(frozen=True)
 class Handoff:
-    """An entity: its id is the ticket number shown to the visitor, and two handoffs are the
-    same request when their ids match."""
+    """An entity: its id is the ticket number the visitor and the care team see, generated once
+    and never changed (the dataclass is frozen). Two handoffs are the same request when their
+    ids match."""
 
     session_id: str = field(compare=False)
     urgency: Urgency = field(compare=False)

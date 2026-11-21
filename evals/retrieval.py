@@ -21,12 +21,10 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from sqlalchemy import func, select
-
-from app.core.database import SessionLocal
-from app.core.models import Document, ProcessedData
+from app.dependencies import get_retrieval_service
 from app.domain.passages import RELEVANCE_THRESHOLD, TOP_N, Passage, select_relevant
-from app.services import retrieval
+from app.repositories.documents import DocumentRepository
+from app.repositories.processed_data import ProcessedDataRepository
 from evals.metrics import hit_rate, precision, recall, reciprocal_rank
 
 HERE = Path(__file__).parent
@@ -41,23 +39,6 @@ class Case:
 
 def load_cases(path: Path = HERE / "retrieval_cases.jsonl") -> list[Case]:
     return [Case(**json.loads(line)) for line in path.read_text().splitlines() if line.strip()]
-
-
-def passages_per_condition() -> dict[str, int]:
-    with SessionLocal() as session:
-        query = (
-            select(ProcessedData.condition_name, func.count())
-            .join(Document, Document.processed_data_id == ProcessedData.id)
-            .group_by(ProcessedData.condition_name)
-        )
-        return dict(session.execute(query).all())
-
-
-def processor_versions() -> str:
-    """The worker version(s) that produced the passages being scored."""
-    with SessionLocal() as session:
-        versions = session.scalars(select(ProcessedData.processor_version).distinct().order_by(ProcessedData.processor_version))
-        return ", ".join(versions) or "none"
 
 
 def stages(ranked: list[Passage], k: int, threshold: float = RELEVANCE_THRESHOLD) -> dict[str, list[Passage]]:
@@ -83,62 +64,100 @@ def sweep(cases: list[Case], ranked: list[list[Passage]], thresholds: list[float
     return rows
 
 
-def evaluate(cases: list[Case], ranked: list[list[Passage]], totals: dict[str, int], k: int) -> dict:
-    scores = {stage: {"precision": [], "recall": [], "hit_rate": [], "mrr": [], "empty_on_topic": 0} for stage in STAGES}
-    off_topic_empty = {stage: 0 for stage in STAGES}
-    misses = []
-    leaks = []  # off-topic questions the pipeline still found passages for
-    outcomes = []  # one per question, for the website's grid
+StageResults = dict[str, list[Passage]]  # what each stage returned for one question
 
-    for case, candidates in zip(cases, ranked, strict=True):
-        results = stages(candidates, k)
-        if case.condition is None:
-            for stage, passages in results.items():
-                off_topic_empty[stage] += not passages
-            if results["pipeline"]:
-                leaks.append({"question": case.question, "got": sorted({str(p.condition) for p in results["pipeline"]})})
-            outcomes.append({"question": case.question, "condition": None, "outcome": "leak" if results["pipeline"] else "silent"})
-            continue
+
+def evaluate(cases: list[Case], ranked: list[list[Passage]], totals: dict[str, int], k: int) -> dict:
+    """Score every stage on the questions about a condition, and check it stays silent on the others."""
+    graded = [(case, stages(candidates, k)) for case, candidates in zip(cases, ranked, strict=True)]
+    on_topic = [(case, results) for case, results in graded if case.condition is not None]
+    off_topic = [results for case, results in graded if case.condition is None]
+    _check_known_conditions([case for case, _ in on_topic], totals)
+    return {
+        "k": k,
+        "on_topic": len(on_topic),
+        "off_topic": len(off_topic),
+        "summary": {stage: _stage_summary(stage, on_topic, off_topic, totals) for stage in STAGES},
+        "misses": [_miss(case, results["pipeline"]) for case, results in on_topic if not _found(case, results["pipeline"])],
+        # off-topic questions the pipeline still found passages for
+        "leaks": [_leak(case, results["pipeline"]) for case, results in graded if case.condition is None and results["pipeline"]],
+        "outcomes": [_outcome(case, results["pipeline"]) for case, results in graded],  # for the website's grid
+    }
+
+
+def _check_known_conditions(cases: list[Case], totals: dict[str, int]) -> None:
+    for case in cases:
         if case.condition not in totals:
             raise SystemExit(f"Unknown condition in retrieval_cases.jsonl: {case.condition!r}")
-        for stage, passages in results.items():
-            hits = [passage.condition == case.condition for passage in passages]
-            stage_scores = scores[stage]
-            stage_scores["precision"].append(precision(hits))
-            stage_scores["recall"].append(recall(hits, totals[case.condition]))
-            stage_scores["hit_rate"].append(hit_rate(hits))
-            stage_scores["mrr"].append(reciprocal_rank(hits))
-            stage_scores["empty_on_topic"] += not passages
-        pipeline = results["pipeline"]
-        found = any(passage.condition == case.condition for passage in pipeline)
-        outcomes.append({
-            "question": case.question,
-            "condition": case.condition,
-            "outcome": "found" if found else "wrong" if pipeline else "none",
-        })
-        if not found:
-            misses.append({
-                "question": case.question,
-                "expected": case.condition,
-                "got": [passage.condition for passage in pipeline] or ["(nothing above the threshold)"],
-            })
 
-    on_topic = sum(case.condition is not None for case in cases)
-    off_topic = len(cases) - on_topic
-    summary = {
-        stage: {
-            **{name: statistics.mean(values) for name, values in metrics.items() if isinstance(values, list)},
-            "empty_on_topic": metrics["empty_on_topic"] / on_topic,
-            "abstained_off_topic": off_topic_empty[stage] / off_topic if off_topic else 0.0,
-        }
-        for stage, metrics in scores.items()
+
+def _hits(passages: list[Passage], condition: str | None) -> list[bool]:
+    """For each passage, best first, whether it comes from the question's condition."""
+    return [passage.condition == condition for passage in passages]
+
+
+def _found(case: Case, passages: list[Passage]) -> bool:
+    return any(_hits(passages, case.condition))
+
+
+def _stage_summary(
+    stage: str, on_topic: list[tuple[Case, StageResults]], off_topic: list[StageResults], totals: dict[str, int]
+) -> dict[str, float]:
+    """One stage's averages over the on-topic questions, and how often it stays silent."""
+    hits = [(_hits(results[stage], case.condition), totals[case.condition]) for case, results in on_topic]
+    return {
+        "precision": statistics.mean(precision(h) for h, _ in hits),
+        "recall": statistics.mean(recall(h, total) for h, total in hits),
+        "hit_rate": statistics.mean(hit_rate(h) for h, _ in hits),
+        "mrr": statistics.mean(reciprocal_rank(h) for h, _ in hits),
+        "empty_on_topic": sum(not results[stage] for _, results in on_topic) / len(on_topic),
+        "abstained_off_topic": sum(not results[stage] for results in off_topic) / len(off_topic) if off_topic else 0.0,
     }
-    return {"k": k, "on_topic": on_topic, "off_topic": off_topic, "summary": summary, "misses": misses, "leaks": leaks, "outcomes": outcomes}
+
+
+def _miss(case: Case, pipeline: list[Passage]) -> dict:
+    return {
+        "question": case.question,
+        "expected": case.condition,
+        "got": [passage.condition for passage in pipeline] or ["(nothing above the threshold)"],
+    }
+
+
+def _leak(case: Case, pipeline: list[Passage]) -> dict:
+    return {"question": case.question, "got": sorted({str(passage.condition) for passage in pipeline})}
+
+
+def _outcome(case: Case, pipeline: list[Passage]) -> dict:
+    """found / wrong / none for a question about a condition; silent / leak for the others."""
+    if case.condition is None:
+        outcome = "leak" if pipeline else "silent"
+    else:
+        outcome = "found" if _found(case, pipeline) else "wrong" if pipeline else "none"
+    return {"question": case.question, "condition": case.condition, "outcome": outcome}
 
 
 def report(result: dict, sweep_rows: list[dict]) -> str:
+    sections = [
+        _stages_section(result),
+        _sweep_section(sweep_rows),
+        _misses_section(result["misses"]),
+        _leaks_section(result["leaks"]),
+    ]
+    lines = [line for section in sections for line in [*section, ""]]
+    return "\n".join(lines) + "\n"
+
+
+def _stages_section(result: dict) -> list[str]:
     k = result["k"]
-    lines = [
+    labels = {"vector": f"Vector search, top {k}", "reranked": f"+ cross-encoder re-rank, top {k}", "pipeline": "+ relevance threshold (production)"}
+    rows = []
+    for stage in STAGES:
+        s = result["summary"][stage]
+        rows.append(
+            f"| {labels[stage]} | {s['precision']:.0%} | {s['recall']:.0%} | {s['hit_rate']:.0%} | {s['mrr']:.2f} "
+            f"| {s['empty_on_topic']:.0%} | {s['abstained_off_topic']:.0%} |"
+        )
+    return [
         f"# Retrieval evaluation ({date.today().isoformat()})",
         "",
         f"Knowledge base: {result['documents']} passages from worker {result['processor']}.",
@@ -152,22 +171,18 @@ def report(result: dict, sweep_rows: list[dict]) -> str:
         "",
         "| Stage | Precision | Recall | Hit rate | MRR | On-topic with no passages | Off-topic correctly empty |",
         "| --- | --- | --- | --- | --- | --- | --- |",
-    ]
-    labels = {"vector": f"Vector search, top {k}", "reranked": f"+ cross-encoder re-rank, top {k}", "pipeline": "+ relevance threshold (production)"}
-    for stage in STAGES:
-        s = result["summary"][stage]
-        lines.append(
-            f"| {labels[stage]} | {s['precision']:.0%} | {s['recall']:.0%} | {s['hit_rate']:.0%} | {s['mrr']:.2f} "
-            f"| {s['empty_on_topic']:.0%} | {s['abstained_off_topic']:.0%} |"
-        )
-    lines += [
+        *rows,
         "",
         (
             "Precision: share of returned passages from the right condition. Recall: share of that condition's "
             f"passages returned (at most {k} of its 4-14 passages, so it cannot reach 100%). Hit rate: at least one "
             "right passage. MRR: 1 / rank of the first right passage."
         ),
-        "",
+    ]
+
+
+def _sweep_section(sweep_rows: list[dict]) -> list[str]:
+    return [
         "## Relevance threshold sweep",
         "",
         (
@@ -182,23 +197,24 @@ def report(result: dict, sweep_rows: list[dict]) -> str:
             f"| {row['hit_rate']:.0%} | {row['precision']:.0%} | {row['empty_on_topic']:.0%} | {row['abstained_off_topic']:.0%} |"
             for row in sweep_rows
         ),
-        "",
-        f"## Pipeline misses ({len(result['misses'])})",
-        "",
     ]
-    lines_leaks = [
-        f"## Off-topic questions that still got passages ({len(result['leaks'])})",
-        "",
-        *([f"- {leak['question']} → {', '.join(leak['got'])}" for leak in result["leaks"]] or ["None."]),
-        "",
+
+
+def _misses_section(misses: list[dict]) -> list[str]:
+    table = [
+        "| Question | Expected | Conditions returned |",
+        "| --- | --- | --- |",
+        *(f"| {m['question']} | {m['expected']} | {', '.join(str(c) for c in m['got'])} |" for m in misses),
     ]
-    if result["misses"]:
-        lines += ["| Question | Expected | Conditions returned |", "| --- | --- | --- |"]
-        lines += [f"| {m['question']} | {m['expected']} | {', '.join(str(c) for c in m['got'])} |" for m in result["misses"]]
-    else:
-        lines.append("None.")
-    lines += ["", *lines_leaks]
-    return "\n".join(lines) + "\n"
+    return [f"## Pipeline misses ({len(misses)})", "", *(table if misses else ["None."])]
+
+
+def _leaks_section(leaks: list[dict]) -> list[str]:
+    return [
+        f"## Off-topic questions that still got passages ({len(leaks)})",
+        "",
+        *([f"- {leak['question']} → {', '.join(leak['got'])}" for leak in leaks] or ["None."]),
+    ]
 
 
 def main() -> None:
@@ -208,17 +224,19 @@ def main() -> None:
     logging.basicConfig(level=logging.WARNING)
 
     cases = load_cases()
-    ranked = [retrieval.rank(case.question) for case in cases]  # the slow part: done once
-    totals = passages_per_condition()
+    retrieval_service = get_retrieval_service()
+    ranked = [retrieval_service.rank(case.question) for case in cases]  # the slow part: done once
+    totals = DocumentRepository().passage_counts_by_condition()
     result = evaluate(cases, ranked, totals, args.k)
-    result |= {"documents": sum(totals.values()), "processor": processor_versions()}
+    processor = ", ".join(ProcessedDataRepository().processor_versions()) or "none"
+    result |= {"documents": sum(totals.values()), "processor": processor}
     thresholds = [-6.0, -5.0, -4.0, -3.0, -2.0, -1.0, 0.0]
     sweep_rows = sweep(cases, ranked, thresholds)
     text = report(result, sweep_rows)
     out = HERE / "results" / "retrieval.md"
     out.parent.mkdir(exist_ok=True)
     out.write_text(text)
-    # The same numbers for the website (medical_conditions_react_frontend/src/data/evaluation.json).
+    # The same numbers for the website (medical_conditions_react_frontend/src/data/evaluation/retrieval.json).
     data = {
         "date": date.today().isoformat(),
         "processor": result["processor"],

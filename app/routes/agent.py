@@ -2,20 +2,20 @@
 
 from fastapi import APIRouter
 
+from app.dependencies import AgentServiceDep
 from app.routes.streaming import EventStream, sse_response
 from app.schemas import AgentResponse, ChatRequest
-from app.services import agent
 
 router = APIRouter()
 
 
 @router.post("/")
-async def run(request: ChatRequest) -> AgentResponse:
+async def run(request: ChatRequest, agent_service: AgentServiceDep) -> AgentResponse:
     """The answer, the conditions it drew on, the tools called and the handoff opened (or null)."""
-    return await agent.run(request)
+    return await agent_service.reply(request)
 
 
 @router.post("/stream", response_class=EventStream)
-async def stream_run(request: ChatRequest) -> EventStream:
+async def stream_run(request: ChatRequest, agent_service: AgentServiceDep) -> EventStream:
     """Server-Sent Events: one `data: <json>` line per AgentEvent (app/schemas.py)."""
-    return sse_response(agent.stream_run(request), request.session_id)
+    return sse_response(agent_service.stream(request), request.session_id)

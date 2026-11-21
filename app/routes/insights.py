@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 
-from app.services import insights
+from app.dependencies import InsightsServiceDep
 
 router = APIRouter()
 
@@ -12,12 +12,14 @@ router = APIRouter()
 
 
 @router.get("/condition-names")
-def condition_names() -> list[str]:
+def condition_names(insights_service: InsightsServiceDep) -> list[str]:
     """Every condition in the knowledge base, alphabetically."""
-    return insights.condition_names()
+    return insights_service.condition_names()
 
 
 @router.get("/top-symptoms")
-def top_symptoms(top_n: Annotated[int, Query(ge=1, le=100)] = 10) -> list[tuple[str, int]]:
+def top_symptoms(
+    insights_service: InsightsServiceDep, top_n: Annotated[int, Query(ge=1, le=100)] = 10
+) -> list[tuple[str, int]]:
     """The symptoms shared by the most conditions, as [symptom, number of conditions]."""
-    return insights.top_symptoms(top_n)
+    return insights_service.top_symptoms(top_n)

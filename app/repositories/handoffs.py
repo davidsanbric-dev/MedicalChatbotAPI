@@ -1,28 +1,28 @@
 """handoff_requests: conversations the agent escalated to a human."""
 
-from sqlalchemy import delete
-
-from app.core.database import SessionLocal
 from app.core.models import HandoffRequest
 from app.domain.handoff import Handoff
+from app.repositories.base import BaseRepository
 
 
-def add(handoff: Handoff) -> None:
-    """Open the request; its id is already the ticket number shown to the visitor."""
-    with SessionLocal.begin() as session:
-        session.add(
-            HandoffRequest(
-                id=handoff.id,
-                session_id=handoff.session_id,
-                urgency=handoff.urgency.value,
-                reason=handoff.reason,
-                last_message=handoff.last_message,
-            )
+class HandoffRepository(BaseRepository):
+    model = HandoffRequest
+
+    def add(self, handoff: Handoff) -> None:
+        """Open the request; its id is already the ticket number shown to the visitor."""
+        with self._transaction() as session:
+            session.add(self._row_for(handoff))
+
+    def delete_by_session_prefix(self, prefix: str) -> int:
+        """Remove the requests of every session starting with `prefix` (the agent evaluation's)."""
+        return self._delete_where(HandoffRequest.session_id.startswith(prefix))
+
+    @staticmethod
+    def _row_for(handoff: Handoff) -> HandoffRequest:
+        return HandoffRequest(
+            id=handoff.id,
+            session_id=handoff.session_id,
+            urgency=handoff.urgency.value,
+            reason=handoff.reason,
+            last_message=handoff.last_message,
         )
-
-
-def delete_for_sessions(prefix: str) -> int:
-    """Remove the requests of every session starting with `prefix` (the agent evaluation's)."""
-    with SessionLocal.begin() as session:
-        result = session.execute(delete(HandoffRequest).where(HandoffRequest.session_id.startswith(prefix)))
-        return result.rowcount

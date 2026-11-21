@@ -29,12 +29,12 @@ sequenceDiagram
 
 | Step on the [API page](https://medicalchatbot.demos.davieldev.com/api) | Code |
 | --- | --- |
-| 1 · Understand the question | `_rephrase()` in [`app/services/chat.py`](app/services/chat.py), with the prompts in [`app/core/prompts.py`](app/core/prompts.py) |
-| 2 · Find similar passages | `search()` in [`app/services/retrieval.py`](app/services/retrieval.py) → `nearest()` in [`app/repositories/documents.py`](app/repositories/documents.py) |
-| 3 · Double-check each one | the same `search()`; which passages count (`RELEVANCE_THRESHOLD`, `TOP_N`) is the rule in [`app/domain/passages.py`](app/domain/passages.py), charted in [Re-rank scores](https://medicalchatbot.demos.davieldev.com/api#rerank) |
-| 4 · Write the answer | `stream_reply()` in [`app/services/chat.py`](app/services/chat.py); OpenRouter with a Gemini fallback in [`app/core/llm.py`](app/core/llm.py) |
+| 1 · Understand the question | `ChatService._rephrase()` in [`app/services/chat.py`](app/services/chat.py), with the prompts in [`app/core/prompts.py`](app/core/prompts.py) |
+| 2 · Find similar passages | `RetrievalService.search()` in [`app/services/retrieval.py`](app/services/retrieval.py) → `DocumentRepository.nearest()` in [`app/repositories/documents.py`](app/repositories/documents.py) |
+| 3 · Double-check each one | the same `RetrievalService.search()`; which passages count (`RELEVANCE_THRESHOLD`, `TOP_N`) is the rule in [`app/domain/passages.py`](app/domain/passages.py), charted in [Re-rank scores](https://medicalchatbot.demos.davieldev.com/api#rerank) |
+| 4 · Write the answer | `ChatService.stream()` in [`app/services/chat.py`](app/services/chat.py); OpenRouter with a Gemini fallback in [`app/core/llm.py`](app/core/llm.py) |
 
-Memory is one `chat_history` row per session ([`app/repositories/chat_history.py`](app/repositories/chat_history.py)). The four pipeline tables and how they link are on the [database page](https://medicalchatbot.demos.davieldev.com/database#schema); the agent adds a fifth, `handoff_requests`. The API creates them at startup ([`app/core/database.py`](app/core/database.py)), along with the HNSW vector index, and upgrades older databases in place.
+Memory is one `chat_history` row per session (`ChatHistoryRepository` in [`app/repositories/chat_history.py`](app/repositories/chat_history.py)), shared by the chat and the agent through their base class, `ConversationService` in [`app/services/base.py`](app/services/base.py). The four pipeline tables and how they link are on the [database page](https://medicalchatbot.demos.davieldev.com/database#schema); the agent adds a fifth, `handoff_requests`. The API creates them at startup ([`app/core/database.py`](app/core/database.py)), along with the HNSW vector index, and upgrades older databases in place.
 
 ## The agent: tool calling and human handoff
 
@@ -87,9 +87,9 @@ Each layer imports only from the layers above it in this table.
 |---|---|---|
 | [`app/domain/`](app/domain/) | The rules, in plain Python with no I/O | which passages are relevant, emergency wording, a handoff |
 | [`app/core/`](app/core/) | Settings and the clients for the database and the models, plus the prompts | `llm.py`, `embedding.py`, `models.py` |
-| [`app/repositories/`](app/repositories/) | SQL, one module per table | `documents.nearest()` |
-| [`app/services/`](app/services/) | The chat, the agent and retrieval, built from the layers above | `chat.stream_reply()` |
-| [`app/routes/`](app/routes/) | HTTP: endpoints, Server-Sent Events, rate limits | `POST /chat/stream` |
+| [`app/repositories/`](app/repositories/) | SQL: one `…Repository` class per table, on a shared `BaseRepository` (sessions, transactions) | `DocumentRepository.nearest()` |
+| [`app/services/`](app/services/) | The chat, the agent and retrieval as `…Service` classes, built from the layers above; chat and agent share `ConversationService` | `ChatService.stream()` |
+| [`app/routes/`](app/routes/) | HTTP: endpoints, Server-Sent Events, rate limits; services arrive through `Depends`, built once in [`app/dependencies.py`](app/dependencies.py) | `POST /chat/stream` |
 
 ## Quick start
 

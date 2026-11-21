@@ -22,10 +22,11 @@ from pathlib import Path
 
 from app.core.config import GEMINI_MODEL, OPENROUTER_API_KEY, OPENROUTER_MODEL
 from app.core.database import prepare_database
+from app.dependencies import get_agent_service
 from app.domain.triage import is_emergency
-from app.repositories import chat_history, handoffs
+from app.repositories.chat_history import ChatHistoryRepository
+from app.repositories.handoffs import HandoffRepository
 from app.schemas import ChatRequest
-from app.services import agent
 
 HERE = Path(__file__).parent
 SESSION_PREFIX = "eval-agent-"
@@ -43,13 +44,13 @@ async def run_case(message: str) -> dict:
     session_id = SESSION_PREFIX + uuid.uuid4().hex[:12]
     started = time.perf_counter()
     try:
-        result = await agent.run(ChatRequest(query=message, session_id=session_id))
-        tools = [tool["name"] for tool in result["tools"]]
+        result = await get_agent_service().reply(ChatRequest(query=message, session_id=session_id))
+        tools = [tool["name"] for tool in result.tools]
         return {
             "session_id": session_id,
             "tools": tools,
             "did": outcome(message, tools),
-            "answer": result["response"],
+            "answer": result.response,
             "seconds": time.perf_counter() - started,
         }
     except Exception as error:  # a failed case is a result, not a crash
@@ -68,9 +69,10 @@ async def evaluate(cases: list[dict]) -> list[dict]:
 
 
 def cleanup(rows: list[dict]) -> None:
+    chat_history_repository = ChatHistoryRepository()
     for row in rows:
-        chat_history.clear(row["session_id"])
-    removed = handoffs.delete_for_sessions(SESSION_PREFIX)
+        chat_history_repository.clear(row["session_id"])
+    removed = HandoffRepository().delete_by_session_prefix(SESSION_PREFIX)
     print(f"Cleaned up {len(rows)} eval sessions and {removed} handoff requests.")
 
 
@@ -81,13 +83,14 @@ def report(rows: list[dict]) -> str:
     for row in rows:
         by_expected.setdefault(row["expected"], []).append(row["passed"])
     timed = [row["seconds"] for row in rows if row["seconds"]]
+    median_turn = f"{sorted(timed)[len(timed) // 2]:.1f} s" if timed else "n/a (every case failed)"
     false_handoffs = sum(row["did"] == "request_human_handoff" and row["expected"] != "request_human_handoff" for row in rows)
     lines = [
         f"# Agent evaluation ({date.today().isoformat()})",
         "",
         (
             f"Model: {model}. {passed} of {len(rows)} cases chose the expected action ({passed / len(rows):.0%}); "
-            f"{false_handoffs} unnecessary handoffs; median turn {sorted(timed)[len(timed) // 2]:.1f} s."
+            f"{false_handoffs} unnecessary handoffs; median turn {median_turn}."
         ),
         "",
         "| Expected action | Correct |",
@@ -115,7 +118,7 @@ def main() -> None:
     out = HERE / "results" / "agent.md"
     out.parent.mkdir(exist_ok=True)
     out.write_text(text)
-    # The same results for the website (medical_conditions_react_frontend/src/data/evaluation.json).
+    # The same results for the website (medical_conditions_react_frontend/src/data/evaluation/agent.json).
     data = {
         "date": date.today().isoformat(),
         "model": OPENROUTER_MODEL if OPENROUTER_API_KEY else GEMINI_MODEL,

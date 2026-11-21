@@ -2,8 +2,7 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
-from app.routes import rate_limit
-from app.routes.rate_limit import SlidingWindowLimiter, client_ip
+from app.routes.rate_limit import ChatRateLimit, SlidingWindowLimiter, client_ip
 
 
 class FakeClock:
@@ -70,14 +69,16 @@ def test_client_ip_with_shorter_chain_falls_back_to_leftmost():
     assert client_ip(request, trusted_hops=2) == "1.2.3.4"
 
 
-def test_limit_chat_returns_429_with_retry_after(monkeypatch):
+def test_chat_rate_limit_returns_429_with_retry_after():
     clock = FakeClock()
-    monkeypatch.setattr(rate_limit, "_per_client", [SlidingWindowLimiter(2, 60, "per client", clock=clock)])
-    monkeypatch.setattr(rate_limit, "_global", SlidingWindowLimiter(3, 86400, "global", clock=clock))
+    limit_chat = ChatRateLimit(
+        per_client=[SlidingWindowLimiter(2, 60, "per client", clock=clock)],
+        global_limit=SlidingWindowLimiter(3, 86400, "global", clock=clock),
+    )
 
     app = FastAPI()
 
-    @app.post("/chat/", dependencies=[Depends(rate_limit.limit_chat)])
+    @app.post("/chat/", dependencies=[Depends(limit_chat)])
     async def chat():
         return {"ok": True}
 
