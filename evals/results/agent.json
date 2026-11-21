@@ -1,5 +1,5 @@
 {
-  "date": "2026-11-17",
+  "date": "2026-11-21",
   "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
   "fallback": "gemini-2.5-flash",
   "cases": [
@@ -11,7 +11,7 @@
       "tools": [
         "search_knowledge_base"
       ],
-      "seconds": 87.4
+      "seconds": 7.5
     },
     {
       "message": "What are the symptoms of strep throat?",
@@ -21,7 +21,7 @@
       "tools": [
         "search_knowledge_base"
       ],
-      "seconds": 220.3
+      "seconds": 5.4
     },
     {
       "message": "My heel hurts every morning when I get up, what could help?",
@@ -29,10 +29,9 @@
       "did": "search_knowledge_base",
       "passed": true,
       "tools": [
-        "search_knowledge_base",
         "search_knowledge_base"
       ],
-      "seconds": 79.9
+      "seconds": 6.9
     },
     {
       "message": "¿Cuáles son los síntomas de la migraña?",
@@ -42,7 +41,7 @@
       "tools": [
         "search_knowledge_base"
       ],
-      "seconds": 185.3
+      "seconds": 5.8
     },
     {
       "message": "Is a sinus infection contagious?",
@@ -52,7 +51,7 @@
       "tools": [
         "search_knowledge_base"
       ],
-      "seconds": 14.3
+      "seconds": 6.0
     },
     {
       "message": "What conditions can you help me with?",
@@ -62,7 +61,7 @@
       "tools": [
         "list_conditions"
       ],
-      "seconds": 2.7
+      "seconds": 4.6
     },
     {
       "message": "Which topics do you have information about?",
@@ -72,7 +71,7 @@
       "tools": [
         "list_conditions"
       ],
-      "seconds": 2.8
+      "seconds": 2.5
     },
     {
       "message": "I want to talk to a real doctor, please.",
@@ -82,7 +81,7 @@
       "tools": [
         "request_human_handoff"
       ],
-      "seconds": 4.7
+      "seconds": 2.6
     },
     {
       "message": "Can you refill my blood pressure prescription?",
@@ -92,7 +91,7 @@
       "tools": [
         "request_human_handoff"
       ],
-      "seconds": 78.3
+      "seconds": 4.2
     },
     {
       "message": "I need to book an appointment for next week.",
@@ -102,7 +101,7 @@
       "tools": [
         "request_human_handoff"
       ],
-      "seconds": 115.9
+      "seconds": 4.9
     },
     {
       "message": "Quiero hablar con una persona, no con un bot.",
@@ -112,7 +111,7 @@
       "tools": [
         "request_human_handoff"
       ],
-      "seconds": 80.8
+      "seconds": 4.7
     },
     {
       "message": "Hi there!",
@@ -120,7 +119,7 @@
       "did": "none",
       "passed": true,
       "tools": [],
-      "seconds": 1.1
+      "seconds": 1.3
     },
     {
       "message": "Thanks, that was helpful!",
