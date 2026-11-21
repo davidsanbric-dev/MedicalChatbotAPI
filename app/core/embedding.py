@@ -1,5 +1,5 @@
 """The two small models behind retrieval (fastembed, ONNX on CPU): steps 2 and 3 on
-https://medicalchatbot.demos.davieldev.com/api
+https://medicalchatbot.demos.davieldev.com/api#classic, also the agent's search tool.
 """
 
 from functools import cache

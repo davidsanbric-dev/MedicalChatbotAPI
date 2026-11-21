@@ -1,17 +1,17 @@
-# Medical Chatbot · RAG API
+# Medical Chatbot · Agent API
 
-**Stations 3 and 4 of 5** in a data pipeline that turns public health-condition pages into the knowledge behind a chatbot. This repository owns the shared PostgreSQL + pgvector database, and serves the chat that answers questions from it.
+**Stations 3 and 4 of 5** in a data pipeline that turns public health-condition pages into the knowledge behind a chatbot. This repository owns the shared PostgreSQL + pgvector database, and serves the AI agent that answers questions from it, along with the classic RAG chat it grew from.
 
-▶ **See it explained, with a 3D walkthrough, real re-rank scores and live data:** [/api](https://medicalchatbot.demos.davieldev.com/api) · [/database](https://medicalchatbot.demos.davieldev.com/database) · [try the chat](https://medicalchatbot.demos.davieldev.com/chat)
+▶ **See it explained, with a 3D walkthrough of the agent loop, real re-rank scores and live data:** [/api](https://medicalchatbot.demos.davieldev.com/api) · [/database](https://medicalchatbot.demos.davieldev.com/database) · [try the chat](https://medicalchatbot.demos.davieldev.com/chat)
 
 ```mermaid
 flowchart LR
-    site([patients.amwell.com]) --> scraper[1 · Scraper] --> worker[2 · Worker] --> db[(3 · Database)] --> api[4 · RAG API] --> web[5 · Web app]
+    site([patients.amwell.com]) --> scraper[1 · Scraper] --> worker[2 · Worker] --> db[(3 · Database)] --> api[4 · Agent API] --> web[5 · Web app]
     style db fill:#199e70,stroke:#199e70,color:#fff
     style api fill:#c98500,stroke:#c98500,color:#fff
 ```
 
-## One chat turn
+## One chat turn (classic mode)
 
 ```mermaid
 sequenceDiagram
@@ -27,7 +27,7 @@ sequenceDiagram
     L-->>V: tokens, streamed as Server-Sent Events
 ```
 
-| Step on the [API page](https://medicalchatbot.demos.davieldev.com/api) | Code |
+| Step on the [API page](https://medicalchatbot.demos.davieldev.com/api#classic), Classic RAG tab | Code |
 | --- | --- |
 | 1 · Understand the question | `ChatService._rephrase()` in [`app/services/chat.py`](app/services/chat.py), with the prompts in [`app/core/prompts.py`](app/core/prompts.py) |
 | 2 · Find similar passages | `RetrievalService.search()` in [`app/services/retrieval.py`](app/services/retrieval.py) → `DocumentRepository.nearest()` in [`app/repositories/documents.py`](app/repositories/documents.py) |
@@ -50,9 +50,16 @@ flowchart LR
     m -- text --> a([Answer + sources])
 ```
 
+| Step in the [API page's 3D scene](https://medicalchatbot.demos.davieldev.com/api) | Code |
+| --- | --- |
+| 1 · Safety check first | `is_emergency()` in [`app/domain/triage.py`](app/domain/triage.py), checked in `AgentService.stream()` before the model is asked |
+| 2 · The AI picks a tool | `AgentService._run_tool_loop()` in [`app/services/agent.py`](app/services/agent.py); `with_tools()` in [`app/core/llm.py`](app/core/llm.py) gives the model the tool schemas |
+| 3 · The tool does the work | `AgentTools.run()`: each tool is an `AgentTools` method, and its docstring is the description the model reads |
+| 4 · Read it, then answer | the same loop: the result goes back as a tool message and the model is asked again, at most `MAX_STEPS` = 4 times |
+
 | Tool | What it does |
 | --- | --- |
-| `search_knowledge_base` | Steps 2 and 3 above (vector search, re-rank, threshold); the passages come back labelled with their condition, which the answer cites |
+| `search_knowledge_base` | Steps 2 and 3 of the classic chat (vector search, re-rank, threshold); the passages come back labelled with their condition, which the answer cites |
 | `list_conditions` | The conditions the knowledge base covers |
 | `request_human_handoff` | Opens a `handoff_requests` row (urgency `routine`, `urgent` or `emergency`), the stand-in for a CRM or help-desk ticket |
 
@@ -75,7 +82,7 @@ Two offline evaluations measure what the pipeline does, rather than how it looks
 - **The evaluation caught a silent embedding mismatch.** On an older local copy, embedded before the worker used the API's question model (worker `e27bc47`), vector search alone found the right condition for only 72% of questions and the re-ranker had to rescue it (88%). Re-embedding with the same model as the questions brought vector search to 100%. If a deployment's passages predate that commit, run the worker with `--reembed`.
 - The report lists the questions that still go wrong: 6 real ones, mostly everyday wording such as "chest cold" for bronchitis, and one uncovered question (appendicitis) that matches other "-itis" conditions.
 
-**Agent tool choice** (`make eval-agent`; local database plus the LLM keys). 16 messages in English and Spanish, each labelled with the action expected: search, list the conditions, hand off to a human, answer directly, or trip the emergency guardrail. On the default free model the agent chose correctly in 16 of 16, with no unnecessary handoffs, in both runs so far ([report](evals/results/agent.md)). Turn times depend on the free tier: a median of 5.5 s in the first run, 14 s in a later one after a day of requests. The run deletes the sessions and handoff requests it creates.
+**Agent tool choice** (`make eval-agent`; local database plus the LLM keys). 16 messages in English and Spanish, each labelled with the action expected: search, list the conditions, hand off to a human, answer directly, or trip the emergency guardrail. On the default free model the agent chose correctly in 16 of 16, with no unnecessary handoffs, in all three runs so far ([report](evals/results/agent.md)). Turn times depend on the free tier: a median of 5.5 s in the first run, 14 s in the second after a day of requests, and 4.6 s in the latest (2026-11-21). The run deletes the sessions and handoff requests it creates.
 
 The website shows both results on its [API page](https://medicalchatbot.demos.davieldev.com/api), from the JSON files written next to each report.
 
@@ -148,7 +155,7 @@ The global daily cap bounds cost in every setup.
 | 1 · Scraper | [MedicalChatbotScraper](https://github.com/davidsanbric-dev/MedicalChatbotScraper) | [/scraper](https://medicalchatbot.demos.davieldev.com/scraper) |
 | 2 · Worker | [MedicalChatbotWorker](https://github.com/davidsanbric-dev/MedicalChatbotWorker) | [/worker](https://medicalchatbot.demos.davieldev.com/worker) |
 | 3 · Database | **MedicalChatbotAPI** (this one) | [/database](https://medicalchatbot.demos.davieldev.com/database) |
-| 4 · RAG API | **MedicalChatbotAPI** (this one) | [/api](https://medicalchatbot.demos.davieldev.com/api) |
+| 4 · Agent API | **MedicalChatbotAPI** (this one) | [/api](https://medicalchatbot.demos.davieldev.com/api) |
 | 5 · Web app | [MedicalChatbotWeb](https://github.com/davidsanbric-dev/MedicalChatbotWeb) | [/interface](https://medicalchatbot.demos.davieldev.com/interface) · [chat](https://medicalchatbot.demos.davieldev.com/chat) |
 
 Educational demo: the content comes from a public telehealth site and is not medical advice.

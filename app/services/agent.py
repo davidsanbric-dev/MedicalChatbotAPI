@@ -1,5 +1,6 @@
 """The tool-calling agent: the model decides, turn by turn, whether to search the knowledge
-base, list what it covers, or hand the conversation to a human.
+base, list what it covers, or hand the conversation to a human. Acted out in 3D, one step
+at a time, on https://medicalchatbot.demos.davieldev.com/api
 
 Where the RAG chat (app/services/chat.py) always runs the same fixed steps, here the model
 chooses the steps. One turn is a loop:

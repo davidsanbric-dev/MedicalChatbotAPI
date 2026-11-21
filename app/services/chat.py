@@ -1,6 +1,6 @@
 """One chat turn: understand the question, find passages, stream the answer.
 
-These are the four steps on https://medicalchatbot.demos.davieldev.com/api. The events
+These are the classic chat's four steps, on https://medicalchatbot.demos.davieldev.com/api#classic. The events
 (ChatEvent in app/schemas.py) are what the chat shows while it waits
 (https://medicalchatbot.demos.davieldev.com/interface#streaming):
     {"stage": "rephrasing"}             understanding the question

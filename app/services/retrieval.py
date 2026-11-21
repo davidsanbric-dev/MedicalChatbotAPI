@@ -1,7 +1,8 @@
 """Find the passages that answer a question: a fast vector search, then a careful re-rank.
 
-Steps 2 and 3 on https://medicalchatbot.demos.davieldev.com/api; the "Re-rank scores"
-tab (#rerank) charts these numbers for real questions.
+Steps 2 and 3 of the classic chat (https://medicalchatbot.demos.davieldev.com/api#classic),
+and the agent's search_knowledge_base tool. The "Re-rank scores" tab (#rerank) charts these
+numbers for real questions.
 """
 
 import logging
