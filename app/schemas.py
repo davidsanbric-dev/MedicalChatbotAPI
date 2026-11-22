@@ -26,10 +26,14 @@ class ChatRequest(BaseModel):
 
 
 class HandoffTicket(TypedDict):
-    """A handoff the agent opened: `id` is the request number shown to the visitor."""
+    """A handoff the agent opened, as saved in handoff_requests. `reference` (the id's first
+    8 hex digits) is the request number the visitor is told."""
 
     id: str
+    reference: str
     urgency: Urgency
+    reason: str
+    opened_at: str  # ISO 8601, UTC
 
 
 class ToolUse(TypedDict):
@@ -49,6 +53,7 @@ class AgentResponse(BaseModel):
     sources: list[str]  # the conditions the answer drew on
     tools: list[ToolUse]  # in the order the agent called them
     handoff: HandoffTicket | None = None
+    conditions: list[str] | None = None  # set when the agent listed what it covers
 
 
 class ErrorResponse(BaseModel):
@@ -86,6 +91,12 @@ class HandoffEvent(TypedDict):
     handoff: HandoffTicket
 
 
+class ConditionsEvent(TypedDict):
+    """The conditions list_conditions returned, for the frontend to show as a list."""
+
+    conditions: list[str]
+
+
 class AgentAnswerEvent(TypedDict):
     answer: str
     sources: list[str]
@@ -98,4 +109,4 @@ class ErrorEvent(TypedDict):
 
 
 ChatEvent = StageEvent | FoundEvent | TokenEvent | AnswerEvent
-AgentEvent = ToolEvent | HandoffEvent | AgentAnswerEvent
+AgentEvent = ToolEvent | HandoffEvent | ConditionsEvent | AgentAnswerEvent

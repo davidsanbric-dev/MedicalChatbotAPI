@@ -9,6 +9,11 @@ chooses the steps. One turn is a loop:
     2. If it asks for tools, run them and send back their results (tool messages).
     3. Repeat until it answers in plain text, at most MAX_STEPS model calls.
 
+The conditions list_conditions returns also go to the frontend as data (a "conditions"
+event), which shows them all under the answer: the model only introduces the list, since
+retyping 76 names it paraphrased them and sometimes added conditions the knowledge base
+doesn't cover.
+
 Guardrails around the loop:
     - Emergency wording (app/domain/triage.py) is caught before the model is asked: it opens
       an "emergency" handoff and returns fixed safety advice, so a model mistake can't miss it.
@@ -18,7 +23,9 @@ Guardrails around the loop:
 
 Events (AgentEvent in app/schemas.py), in the style of the chat stream:
     {"tool": str, "args": dict}                   a tool the agent is calling
-    {"handoff": {"id": str, "urgency": str}}      a human handoff was opened
+    {"handoff": {"id", "reference", "urgency",    a human handoff was opened: the
+                 "reason", "opened_at"}}          handoff_requests row it saved
+    {"conditions": [str]}                         the conditions list_conditions returned
     {"answer": str, "sources": [str]}             the final answer and the conditions it used
 """
 
@@ -42,7 +49,7 @@ from app.core.llm import model_name_of, text_of, unwrap_json_answer, with_tools
 from app.core.prompts import AGENT_SYSTEM_PROMPT, search_results
 from app.domain.handoff import Handoff, Urgency
 from app.domain.passages import Passage
-from app.domain.triage import EMERGENCY_ADVICE, is_emergency
+from app.domain.triage import emergency_advice, is_emergency
 from app.repositories.chat_history import ChatHistoryRepository
 from app.repositories.handoffs import HandoffRepository
 from app.schemas import AgentEvent, AgentResponse, ChatRequest, HandoffEvent
@@ -53,6 +60,7 @@ from app.services.retrieval import RetrievalService
 logger = logging.getLogger(__name__)
 
 MAX_STEPS = 4  # model calls per turn
+LIST_CONDITIONS = "list_conditions"  # the tool whose result the frontend shows as a list
 
 STEP_LIMIT_ANSWER = (
     "I couldn't finish answering that. Please rephrase your question, or ask me to connect you with a person."
@@ -80,6 +88,15 @@ class Turn:
     answer: str = ""
     sources: list[str] = field(default_factory=list)  # conditions the answer drew on
     handoff: Handoff | None = None
+    conditions: list[str] | None = None  # what list_conditions returned, if it ran
+
+    @property
+    def memory(self) -> str:
+        """The answer as the conversation history keeps it: with the listed conditions, so a
+        follow-up like "tell me about the first one" still knows what was shown."""
+        if self.conditions is None:
+            return self.answer
+        return f"{self.answer}\n\n{', '.join(self.conditions)}"
 
     def add_sources(self, passages: list[Passage]) -> None:
         """Remember the conditions these passages came from, once each, in the order found."""
@@ -117,15 +134,19 @@ class AgentTools:
         return search_results(passages)
 
     def list_conditions(self) -> str:
-        """List the conditions the knowledge base covers."""
-        return "The knowledge base covers: " + ", ".join(self.insights_service.condition_names())
+        """Show the visitor the list of conditions the knowledge base covers."""
+        self.turn.conditions = self.insights_service.condition_names()
+        return (
+            f"The visitor now sees these {len(self.turn.conditions)} conditions as a list under your answer, "
+            f"so don't repeat them: {', '.join(self.turn.conditions)}."
+        )
 
     def request_human_handoff(self, reason: str, urgency: Urgency) -> str:
         """Hand the conversation to a human from the care team."""
         handoff = Handoff(self.turn.session_id, Urgency(urgency), reason, self.turn.message)
         self.handoff_repository.add(handoff)
         self.turn.handoff = handoff
-        return f"Handoff request {handoff.id} opened with urgency {handoff.urgency}. A person from the care team will follow up."
+        return f"Handoff request #{handoff.reference} opened with urgency {handoff.urgency}. A person from the care team will follow up."
 
     async def run(self, call: ToolCall) -> ToolMessage:
         """Run one tool call and return its result as the tool message the model reads next."""
@@ -171,7 +192,7 @@ class AgentService(ConversationService[AgentEvent, AgentResponse]):
 
         # Only the visitor's message and the final answer are kept: the next turn needs the
         # conversation, not this turn's tool traffic.
-        await chat_history.aadd_messages([HumanMessage(request.query), AIMessage(turn.answer)])
+        await chat_history.aadd_messages([HumanMessage(request.query), AIMessage(turn.memory)])
         yield {"answer": turn.answer, "sources": turn.sources}
 
     async def _escalate_emergency(self, turn: Turn) -> AsyncIterator[AgentEvent]:
@@ -182,7 +203,7 @@ class AgentService(ConversationService[AgentEvent, AgentResponse]):
         turn.handoff = handoff
         logger.warning("Emergency guardrail opened handoff %s for session %s", handoff.id, turn.session_id)
         yield _handoff_event(handoff)
-        turn.answer = EMERGENCY_ADVICE.format(id=handoff.id)
+        turn.answer = emergency_advice(turn.message, handoff.reference)
 
     async def _run_tool_loop(self, turn: Turn, history: list[BaseMessage]) -> AsyncIterator[AgentEvent]:
         """Run the agent loop for a single turn: ask the model, run the tools it asks for, and
@@ -204,6 +225,8 @@ class AgentService(ConversationService[AgentEvent, AgentResponse]):
                 messages.append(await tools.run(call))
                 if turn.handoff is not None and turn.handoff is not handoff_before:  # the tool opened one
                     yield _handoff_event(turn.handoff)
+                if call["name"] == LIST_CONDITIONS and turn.conditions is not None:
+                    yield {"conditions": turn.conditions}
 
         logger.warning("Agent hit the %d-step limit for session %s", MAX_STEPS, turn.session_id)
         turn.answer = STEP_LIMIT_ANSWER
@@ -216,9 +239,20 @@ class AgentService(ConversationService[AgentEvent, AgentResponse]):
             response.tools.append({"name": event["tool"], "args": event["args"]})
         elif "handoff" in event:
             response.handoff = event["handoff"]
+        elif "conditions" in event:
+            response.conditions = event["conditions"]
         elif "answer" in event:
             response.response, response.sources = event["answer"], event["sources"]
 
 
 def _handoff_event(handoff: Handoff) -> HandoffEvent:
-    return {"handoff": {"id": str(handoff.id), "urgency": handoff.urgency}}
+    """The saved handoff_requests row, for the frontend to show as the tool's result."""
+    return {
+        "handoff": {
+            "id": str(handoff.id),
+            "reference": handoff.reference,
+            "urgency": handoff.urgency,
+            "reason": handoff.reason,
+            "opened_at": handoff.opened_at.isoformat(),
+        }
+    }

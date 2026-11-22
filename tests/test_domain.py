@@ -5,7 +5,7 @@ import pytest
 from app.domain.handoff import Handoff, Urgency
 from app.domain.passages import TOP_N, Passage, select_relevant
 from app.domain.symptoms import most_shared
-from app.domain.triage import is_emergency
+from app.domain.triage import emergency_advice, is_emergency
 
 
 @pytest.mark.parametrize(
@@ -19,6 +19,23 @@ def test_emergency_wording_is_recognized(message):
 @pytest.mark.parametrize("message", ["My chest feels congested from a cold", "How long does the flu last?"])
 def test_ordinary_questions_are_not_emergencies(message):
     assert not is_emergency(message)
+
+
+@pytest.mark.parametrize(
+    ("message", "spanish"),
+    [
+        ("I have chest pain", False),
+        ("I want to kill myself", False),
+        ("dolor de pecho", True),
+        ("Creo que es una sobredosis", True),
+        ("Ayuda, mi papá está inconsciente", True),
+    ],
+)
+def test_the_safety_advice_follows_the_visitors_language(message, spanish):
+    advice = emergency_advice(message, "abc123")
+    assert ("123 en Colombia" in advice) is spanish
+    assert ("123 in Colombia" in advice) is not spanish
+    assert "abc123" in advice
 
 
 def test_only_relevant_passages_are_selected_best_first():

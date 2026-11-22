@@ -25,4 +25,5 @@ class HandoffRepository(BaseRepository):
             urgency=handoff.urgency.value,
             reason=handoff.reason,
             last_message=handoff.last_message,
+            created_at=handoff.opened_at,
         )

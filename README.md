@@ -60,10 +60,10 @@ flowchart LR
 | Tool | What it does |
 | --- | --- |
 | `search_knowledge_base` | Steps 2 and 3 of the classic chat (vector search, re-rank, threshold); the passages come back labelled with their condition, which the answer cites |
-| `list_conditions` | The conditions the knowledge base covers |
+| `list_conditions` | The conditions the knowledge base covers. Also sent whole to the frontend as a `conditions` event, which lists them under the answer; the model only introduces the list |
 | `request_human_handoff` | Opens a `handoff_requests` row (urgency `routine`, `urgent` or `emergency`), the stand-in for a CRM or help-desk ticket |
 
-Guardrails: emergency wording in English or Spanish (chest pain, can't breathe, suicide…) escalates before the model is asked, so a model mistake cannot miss it; tool arguments are validated by their schemas, and a failing tool returns an error the model can react to instead of ending the turn. The prompt forbids diagnoses, prescriptions and dosages. Code: [`app/services/agent.py`](app/services/agent.py), with the emergency wording in [`app/domain/triage.py`](app/domain/triage.py) and the handoff in [`app/domain/handoff.py`](app/domain/handoff.py); tests with a scripted model in [`tests/test_agent.py`](tests/test_agent.py).
+Guardrails: emergency wording in English or Spanish (chest pain, can't breathe, suicide…) escalates before the model is asked, so a model mistake cannot miss it, and the fixed safety advice comes back in the same language; tool arguments are validated by their schemas, and a failing tool returns an error the model can react to instead of ending the turn. The prompt forbids diagnoses, prescriptions and dosages. Code: [`app/services/agent.py`](app/services/agent.py), with the emergency wording in [`app/domain/triage.py`](app/domain/triage.py) and the handoff in [`app/domain/handoff.py`](app/domain/handoff.py); tests with a scripted model in [`tests/test_agent.py`](tests/test_agent.py).
 
 ## Evaluation
 
@@ -115,8 +115,8 @@ To develop with auto-reload, run `make api`: it starts only Postgres in Docker a
 | --- | --- |
 | `POST /chat/stream` | Server-Sent Events: `{"stage": …}`, `{"token": …}`, then `{"answer": …}`, or `{"error": …}` |
 | `POST /chat/` | `{"response": …}`, the same pipeline without streaming |
-| `POST /agent/stream` | Server-Sent Events: `{"tool": …, "args": …}` per tool call, `{"handoff": {"id", "urgency"}}` when one is opened, then `{"answer": …, "sources": […]}` |
-| `POST /agent/` | `{"response", "sources", "tools", "handoff"}`, the same agent without streaming |
+| `POST /agent/stream` | Server-Sent Events: `{"tool": …, "args": …}` per tool call, `{"handoff": {"id", "reference", "urgency", "reason", "opened_at"}}` (the saved `handoff_requests` row) when one is opened, `{"conditions": […]}` after `list_conditions`, then `{"answer": …, "sources": […]}` |
+| `POST /agent/` | `{"response", "sources", "tools", "handoff", "conditions"}`, the same agent without streaming |
 | `GET /insights/condition-names` | Every condition name |
 | `GET /insights/top-symptoms?top_n=10` | `[symptom, number of conditions]` pairs (`top_n` from 1 to 100) |
 | `GET /health` | `{"status": "healthy"}` |

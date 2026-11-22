@@ -38,7 +38,7 @@ class ListHandoffRepository:
 
 class StubInsightsService:
     def condition_names(self):
-        return ["Acne"]
+        return ["Acne", "Asthma"]
 
 
 @pytest.fixture
@@ -87,7 +87,14 @@ async def test_a_handoff_opens_a_request_and_is_reported(monkeypatch, service, t
 
     [ticket] = tickets.added
     assert (ticket.session_id, ticket.urgency, ticket.reason, ticket.last_message) == ("s", "routine", args["reason"], "I need my prescription refilled")
-    assert {"handoff": {"id": str(ticket.id), "urgency": "routine"}} in events
+    [event] = [e for e in events if "handoff" in e]
+    assert event["handoff"] == {
+        "id": str(ticket.id),
+        "reference": ticket.id.hex[:8],
+        "urgency": "routine",
+        "reason": args["reason"],
+        "opened_at": ticket.opened_at.isoformat(),
+    }
     assert events[-1]["answer"] == "A person will follow up."
 
 
@@ -100,8 +107,8 @@ async def test_emergency_wording_escalates_without_asking_the_model(monkeypatch,
 
     assert model.calls == []
     assert tickets.added[0].urgency == "emergency"
-    assert "123 in Colombia" in events[-1]["answer"]
-    assert str(tickets.added[0].id) in events[-1]["answer"]
+    assert "123 en Colombia" in events[-1]["answer"]  # the advice follows the visitor's Spanish
+    assert f"(solicitud {tickets.added[0].reference})" in events[-1]["answer"]
 
 
 @pytest.mark.anyio
@@ -119,7 +126,7 @@ async def test_invalid_tool_arguments_go_back_to_the_model_as_an_error(monkeypat
 
 @pytest.mark.anyio
 async def test_a_model_that_keeps_calling_tools_is_stopped(monkeypatch, service):
-    calls = [tool_call("list_conditions", {}, f"call-{i}") for i in range(agent.MAX_STEPS)]
+    calls = [tool_call("search_knowledge_base", {"query": "acne"}, f"call-{i}") for i in range(agent.MAX_STEPS)]
     use_model(monkeypatch, ScriptedModel(*calls))
 
     events = await collect(service, "What do you cover?")
@@ -129,12 +136,42 @@ async def test_a_model_that_keeps_calling_tools_is_stopped(monkeypatch, service)
 
 
 @pytest.mark.anyio
+async def test_the_listed_conditions_go_to_the_frontend_whole_and_the_model_introduces_them(monkeypatch, service):
+    model = ScriptedModel(tool_call("list_conditions", {}), AIMessage("I cover 2 conditions; ask me about any of them."))
+    use_model(monkeypatch, model)
+
+    result = await service.reply(ChatRequest(query="What can you help me with?", session_id="s"))
+
+    assert result.conditions == ["Acne", "Asthma"]  # the whole list, as data, whatever the model writes
+    assert result.response == "I cover 2 conditions; ask me about any of them."
+    assert "don't repeat them" in model.calls[1][-1].content  # the model is told the visitor sees the list
+    # The history keeps the names, so a follow-up about "the first one" has them.
+    assert service.chat_history("s").messages[-1].content.endswith("Acne, Asthma")
+
+
+@pytest.mark.anyio
+async def test_conditions_listed_alongside_another_tool_still_get_an_answer_from_the_model(monkeypatch, service):
+    both = AIMessage("", tool_calls=[
+        {"name": "list_conditions", "args": {}, "id": "call-1"},
+        {"name": "search_knowledge_base", "args": {"query": "acne"}, "id": "call-2"},
+    ])
+    model = ScriptedModel(both, AIMessage("Here is what I cover, and about acne…"))
+    use_model(monkeypatch, model)
+
+    events = await collect(service, "What do you cover, and what is acne?")
+
+    assert {"conditions": ["Acne", "Asthma"]} in events
+    assert events[-1]["answer"] == "Here is what I cover, and about acne…"
+    assert "don't repeat them" in model.calls[1][-2].content  # the list_conditions result
+
+
+@pytest.mark.anyio
 async def test_greetings_need_no_tools(monkeypatch, service):
     use_model(monkeypatch, ScriptedModel(AIMessage("Hi! How can I help?")))
 
     result = await service.reply(ChatRequest(query="hello", session_id="s"))
 
-    assert result.model_dump() == {"response": "Hi! How can I help?", "sources": [], "tools": [], "handoff": None}
+    assert result.model_dump() == {"response": "Hi! How can I help?", "sources": [], "tools": [], "handoff": None, "conditions": None}
 
 
 @pytest.mark.anyio
@@ -157,5 +194,12 @@ async def test_the_non_streaming_reply_lists_the_tools_and_the_handoff(monkeypat
         "response": "A person will follow up.",
         "sources": [],
         "tools": [{"name": "request_human_handoff", "args": args}],
-        "handoff": {"id": str(tickets.added[0].id), "urgency": "routine"},
+        "handoff": {
+            "id": str(tickets.added[0].id),
+            "reference": tickets.added[0].reference,
+            "urgency": "routine",
+            "reason": args["reason"],
+            "opened_at": tickets.added[0].opened_at.isoformat(),
+        },
+        "conditions": None,
     }

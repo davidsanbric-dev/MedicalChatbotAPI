@@ -2,6 +2,7 @@
 
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import StrEnum
 
 
@@ -25,6 +26,12 @@ class Handoff:
     reason: str = field(compare=False)
     last_message: str = field(compare=False)  # what the visitor said when it was raised
     id: uuid.UUID = field(default_factory=uuid.uuid4)
+    opened_at: datetime = field(default_factory=lambda: datetime.now(UTC), compare=False)
+
+    @property
+    def reference(self) -> str:
+        """The short request number told to the visitor: the id's first 8 hex digits."""
+        return self.id.hex[:8]
 
     @classmethod
     def for_emergency(cls, session_id: str, last_message: str) -> "Handoff":
